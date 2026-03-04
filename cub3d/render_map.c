@@ -32,7 +32,65 @@ void	draw_square(t_mlx *data, int x, int y, int size, int color)
 		i++;
 	}
 }
+char	**copy_map(t_map *map)
+{
+	int		i;
+	char	**copy;
 
+	i = 0;
+	while (map->grid[i])
+		i++;
+	copy = malloc(sizeof(char *) * (i + 1));
+	if (!copy)
+		return (NULL);
+	i = 0;
+	while (map->grid[i])
+	{
+		copy[i] = ft_strdup(map->grid[i]);
+		if (!copy[i])
+		{
+			while (--i >= 0)
+				free(copy[i]);
+			free(copy);
+			return (NULL);
+		}
+		i++;
+	}
+	copy[i] = NULL;
+	return (copy);
+}
+
+int	*find_player(t_map *map, t_player *player)
+{
+	char **mapc;
+	int	**res;
+	int	i;
+	int	y;
+	int	j;
+	int	l;
+
+	i = 0;
+	y =0;
+	j = 0;
+	l = 0;
+	mapc = copy_map(map);
+	while (mapc[i])
+	{
+		while (mapc[i][y])
+		{
+			if (mapc[i][y] == 'N')
+			{
+				j = i;
+				l = y;
+				return (res[j][l])
+			}
+				return ()
+			y++;
+		}
+		i++;
+	}
+	if (mapc)
+}
 int	main(int ac, char **av)
 {
 	t_mlx data;
