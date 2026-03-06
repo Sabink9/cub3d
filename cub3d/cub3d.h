@@ -8,13 +8,6 @@
 # include <stdlib.h>
 # include <unistd.h>
 
-typedef struct s_map
-{
-	char		**grid;
-	int			width;
-	int			height;
-}				t_map;
-
 typedef struct s_player
 {
 	int			size;
@@ -22,7 +15,15 @@ typedef struct s_player
 	int			speed;
 	int			player_x;
 	int			player_y;
+	int			prev_x;
+	int			prev_y;
 }				t_player;
+typedef struct s_map
+{
+	char		**grid;
+	int			width;
+	int			height;
+}				t_map;
 
 typedef struct s_mlx
 {
@@ -31,8 +32,9 @@ typedef struct s_mlx
 	int			tile_size;
 	t_player	player;
 	t_map		map;
+	int		keys[65536];
 }				t_mlx;
 
-int parse_map(t_map *map, char **av);
+int				parse_map(t_mlx *data, char **av);
 
 #endif

@@ -74,23 +74,47 @@ void	print_map(t_map *map)
 	}
 }
 
-int parse_map(t_map *map, char **av)
+void    find_player(t_map *map, t_player *player)
+{
+    int row;
+    int col;
+
+    row = 0;
+    while (row < map->height)
+    {
+        col = 0;
+        while (col < map->width)
+        {
+            if (map->grid[row][col] == 'N')
+            {
+                player->player_x = col;
+                player->player_y = row;
+                return ;
+            }
+            col++;
+        }
+        row++;
+    }
+}
+
+int parse_map(t_mlx *data, char **av)
 {
     int     fd;
 
-    map->grid = NULL;
-    map->width = 0;
-    map->height = 0;
+    data->map.grid = NULL;
+    data->map.width = 0;
+    data->map.height = 0;
     fd = open(av[1], O_RDONLY);
     if (fd == -1)
         return (printf("pas bon"), 0);
-    map->height = count_lines(fd);
+    data->map.height = count_lines(fd);
     close(fd);
     fd = open(av[1], O_RDONLY);
-    map->width = count_rows(fd);
+    data->map.width = count_rows(fd);
     close(fd);
     fd = open(av[1], O_RDONLY);
-    fill_grid(map, fd);
+    fill_grid(&data->map, fd);
     close(fd);
+    find_player(&data->map, &data->player);
     return (0);
 }
