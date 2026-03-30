@@ -1,10 +1,11 @@
 CC = cc
 CFLAGS = -Wall -Werror -Wextra -I.././get_next_line
-LDFLAGS = -L .././minilibx-linux -lmlx -lX11 -lXext
+LDFLAGS = -L .././minilibx-linux -lmlx -lX11 -lXext -lm
 RM = rm -rf
 
 SRC =	render_map.c \
 	create_map.c \
+	raycasting.c \
 	../get_next_line/get_next_line.c \
 	../get_next_line/get_next_line_utils.c 
 

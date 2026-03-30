@@ -87,8 +87,9 @@ void    find_player(t_map *map, t_player *player)
         {
             if (map->grid[row][col] == 'N')
             {
-                player->player_x = col;
-                player->player_y = row;
+                player->player_x = col + 0.5;
+                player->player_y = row + 0.5;
+		player->dir_angle = 270.0;
                 return ;
             }
             col++;
@@ -109,12 +110,15 @@ int parse_map(t_mlx *data, char **av)
         return (printf("pas bon"), 0);
     data->map.height = count_lines(fd);
     close(fd);
+    printf("height: %d\n", data->map.height);  // DEBUG
     fd = open(av[1], O_RDONLY);
     data->map.width = count_rows(fd);
     close(fd);
+    printf("width: %d\n", data->map.width);    // DEBUG
     fd = open(av[1], O_RDONLY);
     fill_grid(&data->map, fd);
     close(fd);
     find_player(&data->map, &data->player);
+    printf("player: x=%f y=%f\n", data->player.player_x, data->player.player_y); // DEBUG
     return (0);
 }
