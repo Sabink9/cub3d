@@ -68,16 +68,25 @@ typedef struct s_ray
 	double		distance;
 	double		hit_x;
 	double		hit_y;
-	int side; // 0 = vertical, 1 = horizontal
+	int side;
 }				t_ray;
 
+// Parsing
 int				parse_map(t_mlx *data, char **av);
+
+// Raycasting
 t_ray			cast_ray(t_mlx *data, double angle);
 void			render_3d(t_mlx *data);
+
+// Rendering
 void			draw_minimap(t_mlx *data);
+void			draw_hands(t_mlx *data);
+void			draw_square(t_mlx *data, int x, int y, int size, int color);
+
+// Events
 int				key_press(int keycode, t_mlx *data);
 int				key_release(int keycode, t_mlx *data);
 int				game_loop(t_mlx *data);
-void			draw_hands(t_mlx *data);
+int				close_window(t_mlx *data);
 
 #endif
