@@ -18,10 +18,10 @@ typedef struct s_player
 	int			size;
 	int			color;
 	int			speed;
-	double player_x; // CHANGE int en double
-	double player_y; // CHANGE int en double
-	double prev_x;   // CHANGE int en double
-	double prev_y;   // CHANGE int en double
+	double player_x;
+	double player_y;
+	double prev_x;
+	double prev_y;
 	double		dir_angle;
 }				t_player;
 typedef struct s_map
