@@ -1,3 +1,11 @@
+NO ../sprites/blue_wall.xpm
+SO ../sprites/grey_wall.xpm
+WE ../sprites/yellow_wall.xpm
+EA ../sprites/purple_wall.xpm
+
+F 80,80,80
+C 100,149,237
+
 1111111111111111
 1000000000000101
 1000000000000101
