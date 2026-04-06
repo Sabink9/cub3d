@@ -3,9 +3,18 @@ CFLAGS = -Wall -Werror -Wextra -I.././get_next_line
 LDFLAGS = -L .././minilibx-linux -lmlx -lX11 -lXext -lm
 RM = rm -rf
 
-SRC =	render_map.c \
-	create_map.c \
-	raycasting.c \
+SRC =	render_game/draw_hands.c \
+	render_game/draw_minimap.c \
+	render_game/key_and_window.c \
+	render_game/moovs_and_env.c \
+	render_game/main.c \
+	parse_map/create_map.c \
+	parse_map/fill_grid.c \
+	parse_map/headers_and_lines.c \
+	parse_map/utile_parse_map.c \
+	raycasting/dda.c \
+	raycasting/hit_wall.c \
+	raycasting/render_cast.c \
 	../get_next_line/get_next_line.c \
 	../get_next_line/get_next_line_utils.c 
 

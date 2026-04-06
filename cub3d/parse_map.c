@@ -3,8 +3,8 @@
 
 int	count_lines(int fd)
 {
-	int		height;
-	char	*line;
+	int height;
+	char *line;
 
 	height = 0;
 	line = get_next_line(fd);
@@ -18,7 +18,7 @@ int	count_lines(int fd)
 }
 void	free_remaining_lines(int fd)
 {
-	char	*line;
+	char *line;
 
 	line = get_next_line(fd);
 	while (line != NULL)
@@ -29,9 +29,9 @@ void	free_remaining_lines(int fd)
 }
 int	count_rows(int fd)
 {
-	int		first_line_width;
-	int		current_width;
-	char	*line;
+	int first_line_width;
+	int current_width;
+	char *line;
 
 	first_line_width = -1;
 	line = get_next_line(fd);
@@ -56,8 +56,8 @@ int	count_rows(int fd)
 
 int	main(int argc, char **argv)
 {
-	int	fd;
-	int	width;
+	int fd;
+	int width;
 
 	if (argc != 2)
 	{
