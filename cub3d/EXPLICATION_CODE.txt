@@ -1,0 +1,485 @@
+========================================================================
+                     EXPLICATION COMPLETE DU CODE CUB3D
+========================================================================
+
+TABLE DES MATIERES
+------------------
+1. Vue d'ensemble du projet
+2. cub3d.h         - Les structures et constantes
+3. create_map.c    - Parsing du fichier .cub
+4. raycasting.c    - Moteur de rendu 3D (DDA + textures)
+5. render_map.c    - Affichage, inputs, boucle de jeu
+6. Flux d'execution (du lancement au jeu)
+
+
+========================================================================
+1. VUE D'ENSEMBLE DU PROJET
+========================================================================
+
+Cub3D est un moteur de raycasting style Wolfenstein 3D.
+Le principe : depuis la position du joueur sur une grille 2D,
+on lance des rayons (un par colonne de pixels) et on calcule
+a quelle distance chaque rayon touche un mur. Plus le mur est
+loin, plus il est dessine petit a l'ecran.
+
+Fichiers principaux :
+  - cub3d.h       : structures de donnees et prototypes
+  - create_map.c  : lecture et validation du fichier .cub
+  - raycasting.c  : algorithme DDA + rendu 3D
+  - render_map.c  : gestion des inputs, minimap, boucle de jeu, main()
+
+
+========================================================================
+2. CUB3D.H - LES STRUCTURES ET CONSTANTES
+========================================================================
+
+CONSTANTES
+----------
+  WIN_W 800        : largeur de la fenetre en pixels
+  WIN_H 600        : hauteur de la fenetre en pixels
+  FOV 60.0         : champ de vision en degres (Field Of View)
+  M_PI             : valeur de Pi (si non definie par le systeme)
+
+  NORTH 0          : face Nord d'un mur (indice texture 0)
+  SOUTH 1          : face Sud d'un mur  (indice texture 1)
+  EAST  2          : face Est d'un mur  (indice texture 2)
+  WEST  3          : face Ouest d'un mur (indice texture 3)
+
+STRUCTURES
+----------
+
+  t_tex : une texture XPM chargee en memoire
+    - img      : pointeur vers l'image mlx
+    - addr     : pointeur vers les donnees brutes des pixels
+    - w, h     : largeur et hauteur de la texture en pixels
+    - bpp      : bits par pixel (generalement 32)
+    - line_len : nombre d'octets par ligne de pixels
+    - endian   : ordre des octets (0 = little, 1 = big)
+    - path     : chemin du fichier XPM (lu depuis le .cub)
+
+  t_player : position et orientation du joueur
+    - player_x    : position X du joueur sur la grille (ex: 3.5)
+    - player_y    : position Y du joueur sur la grille (ex: 2.5)
+    - dir_angle   : angle de regard en degres (0=Est, 90=Sud,
+                    180=Ouest, 270=Nord)
+
+  t_map : la carte du jeu
+    - grid   : tableau de chaines, une par ligne de la carte
+               ex: grid[0] = "111111", grid[1] = "100001"
+    - width  : largeur maximale de la carte (en cellules)
+    - height : nombre de lignes de la carte
+
+  t_mlx : structure principale qui contient TOUT
+    - mlx, win       : connexion mlx et fenetre
+    - img, addr      : image de rendu (un frame buffer)
+    - bpp, line_len, endian : parametres de l'image de rendu
+    - tex[4]         : les 4 textures de murs (NORTH/SOUTH/EAST/WEST)
+    - hands_texture  : texture des mains du joueur
+    - hands_addr, w, h, bpp, line_len, endian : donnees des mains
+    - floor_color    : couleur du sol (format 0xRRGGBB)
+    - ceil_color     : couleur du plafond (format 0xRRGGBB)
+    - player         : position/angle du joueur
+    - map            : la carte
+    - keys[65536]    : etat de chaque touche (1=enfoncee, 0=relachee)
+
+  t_ray : resultat d'un lancer de rayon
+    - distance : distance perpendiculaire au mur touche
+    - hit_x    : coordonnee X exacte du point d'impact
+    - hit_y    : coordonnee Y exacte du point d'impact
+    - side     : direction de la face touchee (NORTH/SOUTH/EAST/WEST)
+
+
+========================================================================
+3. CREATE_MAP.C - PARSING DU FICHIER .CUB
+========================================================================
+
+Format attendu du fichier .cub :
+  NO ./chemin/texture_nord.xpm
+  SO ./chemin/texture_sud.xpm
+  WE ./chemin/texture_ouest.xpm
+  EA ./chemin/texture_est.xpm
+
+  F 220,100,0         <- couleur sol RGB
+  C 225,30,0          <- couleur plafond RGB
+
+  111111              <- debut de la carte (toujours EN DERNIER)
+  100N01
+  111111
+
+FONCTIONS
+---------
+
+strip_newline(line)
+  Supprime le '\n' en fin de ligne retournee par get_next_line().
+  get_next_line() inclut le saut de ligne, ce qui causerait des
+  erreurs de comparaison si on ne le retire pas.
+
+ft_strncmp(s1, s2, n)
+  Compare les n premiers caracteres de s1 et s2.
+  Reimplemente car la libft n'est pas liee dans ce projet.
+  Retourne 0 si identiques, sinon la difference des caracteres.
+
+ft_atoi_color(str)
+  Convertit une chaine en entier, en ignorant les espaces initiaux.
+  Utilise pour lire les valeurs R, G, B dans "F 220,100,0".
+
+parse_color(str, color)
+  Parse une couleur au format "R,G,B" et l'encode en un entier
+  32 bits : (R << 16) | (G << 8) | B.
+  Retourne 0 si les valeurs sont hors de [0,255].
+
+trim_path(str)
+  Supprime les espaces et retours chariot au debut et a la fin
+  d'un chemin de fichier. Ex: "  ./sprites/mur.xpm\n" -> "./sprites/mur.xpm"
+  Alloue et retourne une nouvelle chaine.
+
+parse_header_line(data, line, flags)
+  Tente de reconnaitre une ligne d'entete :
+    - "NO " -> stocke le chemin dans data->tex[NORTH].path, active bit 1
+    - "SO " -> data->tex[SOUTH].path, bit 2
+    - "EA " -> data->tex[EAST].path, bit 4
+    - "WE " -> data->tex[WEST].path, bit 8
+    - "F "  -> parse et stocke floor_color, bit 16
+    - "C "  -> parse et stocke ceil_color, bit 32
+  flags est un entier de 6 bits (un bit par identifiant).
+  Quand flags == 63 (0b111111), les 6 identifiants sont trouves.
+
+is_map_line(line)
+  Retourne 1 si la ligne ne contient que des caracteres valides
+  de carte : '0', '1', ' ', 'N', 'S', 'E', 'W', '\t'.
+  Retourne 0 si la ligne est vide ou contient un autre caractere.
+  Sert a detecter le debut de la section carte.
+
+has_all_headers(line, flags)
+  Version legere de parse_header_line : ne stocke pas les valeurs,
+  met juste a jour flags pour savoir quels identifiants ont ete vus.
+  Utilisee lors du premier passage (comptage de lignes) pour ne pas
+  modifier data.
+
+count_map_lines(fd, flags)
+  Premier passage dans le fichier. Compte le nombre de lignes de
+  la carte (lignes non vides apres que les 6 entetes soient trouves).
+  Ce nombre servira a allouer grid[] de la bonne taille.
+
+pad_row(row, target_width)
+  Si une ligne de la carte est plus courte que target_width,
+  elle est completee avec des espaces jusqu'a target_width.
+  Cela garantit que grid[row][col] est toujours accessible sans
+  debordement pour n'importe quelle colonne dans [0, width-1].
+
+fill_grid(map, fd)
+  Deuxieme passage dans le fichier. Alloue grid[] et le remplit :
+    1. Lit ligne par ligne jusqu'a trouver les 6 entetes
+    2. Detecte le debut de la carte avec is_map_line()
+    3. Stocke chaque ligne de la carte dans grid[y] via ft_strdup()
+    4. Calcule map->width comme le maximum des longueurs de lignes
+    5. Appelle pad_row() pour uniformiser les longueurs
+  La carte peut avoir des lignes de longueurs differentes (les
+  espaces sont valides et representent des zones vides).
+
+find_player(map, player)
+  Parcourt la grille pour trouver le caractere N, S, E ou W.
+  Fixe player_x et player_y au centre de la cellule (+0.5).
+  Convertit l'angle initial :
+    N -> 270.0 degres (regarde vers le haut de la carte)
+    S ->  90.0 degres (regarde vers le bas)
+    E ->   0.0 degres (regarde vers la droite)
+    W -> 180.0 degres (regarde vers la gauche)
+  Remplace le caractere par '0' pour que la collision fonctionne.
+
+parse_headers(data, fd, flags)
+  Troisieme passage dans le fichier. Cette fois, appelle
+  parse_header_line() qui stocke les vraies valeurs (chemins
+  et couleurs) dans data. S'arrete apres les 6 identifiants.
+
+parse_map(data, av)
+  Fonction principale de parsing. Orchestration en 3 passes :
+    1. count_map_lines() -> connait data->map.height
+    2. parse_headers()   -> remplit les chemins et couleurs
+    3. fill_grid()       -> construit la grille
+  Puis find_player() pour positionner le joueur.
+  Retourne 0 en cas d'erreur, 1 si tout est ok.
+
+
+========================================================================
+4. RAYCASTING.C - MOTEUR DE RENDU 3D
+========================================================================
+
+ALGORITHME DDA (Digital Differential Analysis)
+-----------------------------------------------
+C'est l'algorithme central du jeu. Pour chaque colonne de pixels
+a l'ecran (de 0 a WIN_W-1), on lance un rayon dans la direction
+correspondante et on trouve le premier mur touche.
+
+Au lieu de faire de petits pas (0.01 a la fois, lent et imprecis),
+DDA calcule EXACTEMENT a quelle distance est la prochaine frontiere
+de grille horizontale ET verticale, puis saute directement a la plus
+proche. C'est rapide et sans ambiguite sur quelle face est touchee.
+
+init_dda(data, rdx, rdy, side_dist, delta_dist, step, map)
+  Prepare les variables pour l'algorithme DDA :
+    - map[0], map[1]  : cellule de grille ou se trouve le joueur
+    - delta_dist[0]   : distance parcourue par le rayon pour
+                        traverser une cellule entiere en X
+    - delta_dist[1]   : idem en Y
+    - side_dist[0]    : distance jusqu'a la PROCHAINE frontiere
+                        verticale (en partant du joueur)
+    - side_dist[1]    : idem pour frontiere horizontale
+    - step[0], step[1]: direction du pas (-1 ou +1)
+
+  Formule : delta_dist = |1 / direction_rayon|
+  (la distance pour traverser 1 unite de grille dans cette direction)
+
+cast_ray(data, angle)
+  Lance un rayon a l'angle donne. Algorithme DDA en boucle :
+    - Si side_dist[0] < side_dist[1] : on avance en X
+      (frontiere verticale plus proche), side = 0 (mur E/W)
+    - Sinon : on avance en Y, side = 1 (mur N/S)
+    - Si on sort de la carte : retourne distance = 999
+    - Si on touche un mur (grid[y][x] == '1') : calcule le resultat
+
+  Pour le mur touche :
+    - Si mur E/W (side=0) : la face est WEST si on va vers la droite
+      (step[0] > 0), EAST sinon. La coordonnee de texture utilise hit_y.
+    - Si mur N/S (side=1) : la face est NORTH si on va vers le bas
+      (step[1] > 0), SOUTH sinon. La coordonnee de texture utilise hit_x.
+
+  La distance perpendiculaire est :
+    perp_dist = side_dist[axe] - delta_dist[axe]
+  Cette distance est deja corrigee pour l'effet "fisheye" (oeil de
+  poisson) : elle mesure la distance a la ligne de camera, pas au joueur.
+
+calc_tex_x(ray, wall_w)
+  Calcule la colonne de texture a echantillonner.
+  Pour un mur NORTH/SOUTH : utilise la partie fractionnaire de hit_x
+  Pour un mur EAST/WEST   : utilise la partie fractionnaire de hit_y
+  Formule : tex_x = (partie_fractionnaire) * largeur_texture
+  Le /4 actuellement divise par 4 (effet zoom sur la texture).
+
+draw_column_pixel(data, x, y, tex_x, bounds)
+  Dessine un pixel de la colonne x a la hauteur y :
+  - bounds[0] : y du haut du mur a l'ecran
+  - bounds[1] : y du bas du mur a l'ecran
+  - bounds[2] : hauteur du mur en pixels (pour interpoler la texture)
+  - bounds[3] : indice de texture (NORTH/SOUTH/EAST/WEST)
+
+  Si y < bounds[0] -> pixel de plafond (ceil_color)
+  Si y > bounds[1] -> pixel de sol (floor_color)
+  Sinon -> pixel de texture :
+    tex_y = (y - haut_mur) * hauteur_texture / hauteur_mur_ecran
+    Lit la couleur dans tex->addr a la position (tex_x, tex_y)
+
+draw_column(data, x, ray)
+  Pour la colonne x, calcule la hauteur du mur a afficher :
+    wall_height = (WIN_H * 1.5) / distance
+  Plus la distance est petite, plus le mur est grand.
+  Appelle draw_column_pixel pour chaque pixel de la colonne.
+
+render_3d(data)
+  Boucle principale du rendu :
+  Pour chaque colonne x de 0 a WIN_W-1 :
+    - Calcule l'angle du rayon :
+      angle = direction_joueur + (x / WIN_W - 0.5) * FOV
+      (le rayon le plus a gauche pointe a -FOV/2 degres,
+       le plus a droite a +FOV/2 degres)
+    - Lance le rayon avec cast_ray()
+    - Dessine la colonne avec draw_column()
+  Puis affiche la minimap, les mains, et envoie l'image a la fenetre.
+
+
+========================================================================
+5. RENDER_MAP.C - AFFICHAGE, INPUTS, BOUCLE DE JEU
+========================================================================
+
+close_window(data)
+  Detruit la fenetre mlx, libere la connexion, quitte le programme.
+  Appele sur ESC (keycode 65307) ou fermeture de fenetre (event 17).
+
+draw_square(data, x, y, size, color)
+  Dessine un carre plein de taille size x size a la position (x, y).
+  Ecrit directement dans data->addr (le frame buffer de l'image mlx).
+  Formule d'acces a un pixel : addr + (y * line_len + x * bpp/8)
+
+is_green_pixel(color)
+  Detecte si un pixel est "vert" (fond vert = transparent dans les
+  sprites XPM). Un pixel est vert si : g > 80 ET g > r+30 ET g > b+30.
+  Utilise pour ne pas afficher le fond vert des mains.
+
+draw_hand_pixel(data, dx, dy, info)
+  Dessine un pixel des mains a la position d'affichage (dx, dy) :
+    - info[0], info[1] : taille d'affichage ciblee (en pixels ecran)
+    - tex_x = dx * hands_w / info[0]  -> coordonnee X dans la texture
+    - tex_y = dy * hands_h / info[1]  -> coordonnee Y dans la texture
+    - screen_x = (WIN_W - info[0]) / 2 + dx  -> centre horizontal
+    - screen_y = WIN_H - info[1] + dy         -> colle en bas
+  Ignore les pixels verts (fond transparent).
+
+draw_hands(data)
+  Calcule la taille d'affichage des mains proportionnellement a la
+  resolution courante en prenant 800x600 comme reference :
+    info[0] = hands_w * WIN_W / 800  <- echelle horizontale
+    info[1] = hands_h * WIN_H / 600  <- echelle verticale
+  Appelle draw_hand_pixel pour chaque pixel de cette zone.
+
+key_press(keycode, data)
+  Event mlx appele quand une touche est enfoncee.
+  Si ESC (65307) : ferme le programme.
+  Sinon : data->keys[keycode] = 1 (marque la touche comme enfoncee).
+
+key_release(keycode, data)
+  Event mlx appele quand une touche est relachee.
+  data->keys[keycode] = 0
+
+handle_movement(data, new_x, new_y, moved)
+  Si W (119) enfonce : avance dans la direction du regard
+    new_x += cos(angle) * vitesse
+    new_y += sin(angle) * vitesse
+  Si S (115) enfonce : recule (inverse la direction)
+  move_speed = 0.05 * WIN_W / 800.0
+  (proportionnel a la resolution pour un ressenti constant)
+
+handle_strafe(data, new_x, new_y, moved)
+  Si A (97) enfonce : deplacement lateral gauche
+    new_x += sin(angle) * vitesse    (direction perpendiculaire)
+    new_y -= cos(angle) * vitesse
+  Si D (100) enfonce : lateral droit (inverse)
+  Meme vitesse que handle_movement.
+
+handle_rotation(data, moved)
+  Fleche gauche (65361) : reduit dir_angle (tourne a gauche)
+  Fleche droite (65363) : augmente dir_angle (tourne a droite)
+  rot_speed = 1.5 * WIN_W / 800.0 degres par frame
+  Garde dir_angle dans [0, 360[ avec des bouclages.
+
+check_row(data, y, x_min, x_max)
+  Verifie qu'une rangee entiere [x_min .. x_max] a la hauteur y
+  ne contient aucun mur ('1'). Aussi verifie les bornes de la carte.
+  Retourne 1 si la rangee est libre, 0 si bloquee.
+
+check_collision(data, new_x, new_y)
+  Verifie si le joueur peut aller en (new_x, new_y) sans toucher
+  de mur. Utilise une boite de collision de marge 0.35 :
+    x_min = (int)(new_x - 0.35)
+    x_max = (int)(new_x + 0.35)
+    y_min = (int)(new_y - 0.35)
+    y_max = (int)(new_y + 0.35)
+  Appelle check_row pour TOUTES les rangees entre y_min et y_max.
+  Contrairement a une simple verification des 4 coins, cela detecte
+  les murs dans toutes les cellules couvertes par la boite.
+  Retourne 1 si la position est libre, 0 si collision.
+
+game_loop(data)
+  Appele a chaque iteration de mlx_loop (le plus vite possible).
+  Sauvegarde orig_x, orig_y avant tout mouvement.
+  Appelle handle_movement, handle_strafe, handle_rotation.
+  Glissement sur les murs :
+    - check_collision(new_x, orig_y) : peut-on bouger en X seul ?
+      Si oui, met a jour player_x.
+    - check_collision(orig_x, new_y) : peut-on bouger en Y seul ?
+      Si oui, met a jour player_y.
+  Les deux verifications utilisent les positions ORIGINALES comme
+  reference fixe, ce qui evite de glisser dans les coins.
+  Si moved != 0, re-rend la scene (render_3d).
+
+draw_minimap_grid(data, scale, offset)
+  Dessine les cellules de la carte sur la minimap :
+  Cellule '1' -> carree de couleur bleu fonce (0x00245969)
+  Autre       -> carree noir (0x00000000)
+  Chaque cellule de grille = un carre de "scale" pixels.
+  offset[0], offset[1] : position de la minimap en haut a gauche.
+
+draw_minimap(data)
+  Dessine la minimap complete en haut a gauche :
+  - Grille via draw_minimap_grid (scale=10, offset=10)
+  - Point rouge 4x4 pixels pour la position du joueur
+
+load_textures(data)
+  Charge les 4 textures de murs depuis les chemins stockes dans
+  data->tex[i].path (lus depuis le .cub). Pour chaque texture :
+    mlx_xpm_file_to_image() -> charge l'image
+    mlx_get_data_addr()     -> obtient le pointeur vers les pixels
+  Charge aussi la texture des mains (../sprites/hands.xpm).
+  Retourne 0 si une texture est manquante ou introuvable.
+
+init_keys(data)
+  Met a zero les 65536 entrees du tableau keys[].
+  Fait en sorte qu'aucune touche ne soit consideree enfoncee
+  au demarrage du jeu.
+
+init_mlx(data)
+  Initialise la connexion mlx (mlx_init).
+  Cree la fenetre (mlx_new_window).
+  Charge les textures (load_textures).
+  Cree l'image de rendu (mlx_new_image + mlx_get_data_addr).
+
+main(ac, av)
+  Point d'entree du programme :
+  1. Verifie qu'il y a exactement 1 argument (le fichier .cub)
+  2. parse_map()  -> lit et valide le fichier .cub
+  3. init_keys()  -> remet les touches a zero
+  4. init_mlx()   -> fenetre + textures + image
+  5. render_3d()  -> premier rendu avant d'entrer dans la boucle
+  6. mlx_hook()   -> connecte les events clavier et fermeture
+  7. mlx_loop_hook() -> connecte game_loop a la boucle mlx
+  8. mlx_loop()   -> demarre la boucle infinie (jamais retourne)
+
+
+========================================================================
+6. FLUX D'EXECUTION (DU LANCEMENT AU JEU)
+========================================================================
+
+  ./cub3d map.cub
+      |
+      v
+  main() verifie les arguments
+      |
+      v
+  parse_map() lit le fichier en 3 passes :
+    1. count_map_lines() : compte les lignes de carte
+    2. parse_headers()   : stocke textures + couleurs
+    3. fill_grid()       : construit le tableau 2D de la carte
+    4. find_player()     : trouve N/S/E/W, fixe position + angle
+      |
+      v
+  init_mlx() : cree fenetre, charge textures XPM, cree frame buffer
+      |
+      v
+  render_3d() : premier rendu de la scene
+      |
+      v
+  mlx_loop() : boucle infinie
+      |
+      +-- event clavier enfonce  -> key_press()  -> keys[kc] = 1
+      +-- event clavier relache  -> key_release() -> keys[kc] = 0
+      +-- event fermeture        -> close_window() -> exit(0)
+      +-- chaque frame           -> game_loop()
+              |
+              v
+          Lit les touches enfoncees (keys[])
+          Calcule new_x, new_y, nouvelle rotation
+          check_collision() axe X + axe Y (glissement)
+          Met a jour player_x, player_y, dir_angle
+              |
+              v
+          render_3d()
+            Pour chaque colonne x de 0 a WIN_W :
+              cast_ray() avec DDA -> distance + face du mur
+              draw_column() -> plafond + mur texture + sol
+            draw_minimap()
+            draw_hands()
+            mlx_put_image_to_window() -> affiche le frame
+
+
+========================================================================
+TOUCHES DU JEU
+========================================================================
+
+  W            : avancer
+  S            : reculer
+  A            : strafe gauche (deplacement lateral)
+  D            : strafe droit
+  Fleche <-    : tourner a gauche
+  Fleche ->    : tourner a droite
+  ESC          : quitter
+
+========================================================================

@@ -51,49 +51,52 @@ static int	is_green_pixel(unsigned int color)
 	return (0);
 }
 
-static void	draw_hand_pixel(t_mlx *data, int hx, int hy, int *start)
+static void	draw_hand_pixel(t_mlx *data, int dx, int dy, int *info)
 {
+	int				tex_x;
+	int				tex_y;
 	int				screen_x;
 	int				screen_y;
 	char			*pixel_src;
 	unsigned int	color;
 	char			*pixel_dst;
 
-	screen_x = start[0] + hx;
-	screen_y = start[1] + hy;
-	if (screen_x >= 0 && screen_x < WIN_W
-		&& screen_y >= 0 && screen_y < WIN_H)
+	tex_x = dx * data->hands_w / info[0];
+	tex_y = dy * data->hands_h / info[1];
+	screen_x = (WIN_W - info[0]) / 2 + dx;
+	screen_y = WIN_H - info[1] + dy;
+	if (screen_x < 0 || screen_x >= WIN_W
+		|| screen_y < 0 || screen_y >= WIN_H)
+		return ;
+	pixel_src = data->hands_addr
+		+ (tex_y * data->hands_line_len + tex_x * (data->hands_bpp / 8));
+	color = *(unsigned int *)pixel_src;
+	if (!is_green_pixel(color))
 	{
-		pixel_src = data->hands_addr
-			+ (hy * data->hands_line_len + hx * (data->hands_bpp / 8));
-		color = *(unsigned int *)pixel_src;
-		if (!is_green_pixel(color))
-		{
-			pixel_dst = data->addr + (screen_y * data->line_len
-					+ screen_x * (data->bpp / 8));
-			*(unsigned int *)pixel_dst = color;
-		}
+		pixel_dst = data->addr + (screen_y * data->line_len
+				+ screen_x * (data->bpp / 8));
+		*(unsigned int *)pixel_dst = color;
 	}
 }
 
 void	draw_hands(t_mlx *data)
 {
-	int	start[2];
-	int	hy;
-	int	hx;
+	int	info[2];
+	int	dy;
+	int	dx;
 
-	start[1] = WIN_H - data->hands_h;
-	start[0] = (WIN_W - data->hands_w) / 2;
-	hy = 0;
-	while (hy < data->hands_h)
+	info[0] = data->hands_w * WIN_W / 800;
+	info[1] = data->hands_h * WIN_H / 600;
+	dy = 0;
+	while (dy < info[1])
 	{
-		hx = 0;
-		while (hx < data->hands_w)
+		dx = 0;
+		while (dx < info[0])
 		{
-			draw_hand_pixel(data, hx, hy, start);
-			hx++;
+			draw_hand_pixel(data, dx, dy, info);
+			dx++;
 		}
-		hy++;
+		dy++;
 	}
 }
 
@@ -120,7 +123,7 @@ static void	handle_movement(t_mlx *data, double *new_x, double *new_y,
 	double	dir_x;
 	double	dir_y;
 
-	move_speed = 0.05;
+	move_speed = 0.05 * WIN_W / 800.0;
 	dir_x = cos(data->player.dir_angle * M_PI / 180.0);
 	dir_y = sin(data->player.dir_angle * M_PI / 180.0);
 	if (data->keys[119])
@@ -144,7 +147,7 @@ static void	handle_strafe(t_mlx *data, double *new_x, double *new_y,
 	double	dir_x;
 	double	dir_y;
 
-	move_speed = 0.05;
+	move_speed = 0.05 * WIN_W / 800.0;
 	dir_x = cos(data->player.dir_angle * M_PI / 180.0);
 	dir_y = sin(data->player.dir_angle * M_PI / 180.0);
 	if (data->keys[97])
@@ -165,7 +168,7 @@ static void	handle_rotation(t_mlx *data, int *moved)
 {
 	double	rot_speed;
 
-	rot_speed = 1.5;
+	rot_speed = 1.5 * WIN_W / 800.0;
 	if (data->keys[65361])
 	{
 		data->player.dir_angle -= rot_speed;
@@ -182,6 +185,23 @@ static void	handle_rotation(t_mlx *data, int *moved)
 	}
 }
 
+static int	check_row(t_mlx *data, int y, int x_min, int x_max)
+{
+	int	x;
+
+	if (y < 0 || y >= data->map.height)
+		return (0);
+	x = x_min;
+	while (x <= x_max)
+	{
+		if (x < 0 || x >= data->map.width
+			|| data->map.grid[y][x] == '1')
+			return (0);
+		x++;
+	}
+	return (1);
+}
+
 static int	check_collision(t_mlx *data, double new_x, double new_y)
 {
 	double	margin;
@@ -189,23 +209,20 @@ static int	check_collision(t_mlx *data, double new_x, double new_y)
 	int		x_max;
 	int		y_min;
 	int		y_max;
+	int		y;
 
-	margin = 0.55;
+	margin = 0.35;
 	x_min = (int)(new_x - margin);
 	x_max = (int)(new_x + margin);
 	y_min = (int)(new_y - margin);
 	y_max = (int)(new_y + margin);
-	if (x_min < 0 || x_max >= data->map.width
-		|| y_min < 0 || y_max >= data->map.height)
-		return (0);
-	if (data->map.grid[y_min][x_min] == '1')
-		return (0);
-	if (data->map.grid[y_min][x_max] == '1')
-		return (0);
-	if (data->map.grid[y_max][x_min] == '1')
-		return (0);
-	if (data->map.grid[y_max][x_max] == '1')
-		return (0);
+	y = y_min;
+	while (y <= y_max)
+	{
+		if (!check_row(data, y, x_min, x_max))
+			return (0);
+		y++;
+	}
 	return (1);
 }
 
@@ -213,21 +230,26 @@ int	game_loop(t_mlx *data)
 {
 	double	new_x;
 	double	new_y;
+	double	orig_x;
+	double	orig_y;
 	int		moved;
 
-	new_x = data->player.player_x;
-	new_y = data->player.player_y;
+	orig_x = data->player.player_x;
+	orig_y = data->player.player_y;
+	new_x = orig_x;
+	new_y = orig_y;
 	moved = 0;
 	handle_movement(data, &new_x, &new_y, &moved);
 	handle_strafe(data, &new_x, &new_y, &moved);
 	handle_rotation(data, &moved);
-	if (moved && check_collision(data, new_x, new_y))
-	{
-		data->player.player_x = new_x;
-		data->player.player_y = new_y;
-	}
 	if (moved)
+	{
+		if (check_collision(data, new_x, orig_y))
+			data->player.player_x = new_x;
+		if (check_collision(data, orig_x, new_y))
+			data->player.player_y = new_y;
 		render_3d(data);
+	}
 	return (0);
 }
 

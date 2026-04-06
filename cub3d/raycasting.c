@@ -109,7 +109,7 @@ static int	calc_tex_x(t_ray ray, int wall_w)
 		wall_x = ray.hit_y - (int)ray.hit_y;
 	if (wall_x < 0)
 		wall_x += 1.0;
-	tex_x = (int)(wall_x * wall_w);
+	tex_x = (int)(wall_x * wall_w / 4);
 	if (tex_x < 0)
 		tex_x = 0;
 	if (tex_x >= wall_w)
