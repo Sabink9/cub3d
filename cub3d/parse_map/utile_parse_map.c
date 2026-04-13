@@ -12,6 +12,18 @@
 
 #include "../cub3d.h"
 
+void	ft_putchar(char c)
+{
+	write(1, &c, 1);
+}
+
+void	ft_putstr(char *str)
+{
+	if (!str)
+		return ;
+	write(1, str, ft_strlen(str));
+}
+
 void	strip_newline(char *line)
 {
 	int	len;
@@ -37,39 +49,3 @@ int	ft_strncmp(const char *s1, const char *s2, int n)
 	return (0);
 }
 
-static int	ft_atoi_color(char *str)
-{
-	int	n;
-
-	n = 0;
-	while (*str == ' ' || *str == '\t')
-		str++;
-	while (*str >= '0' && *str <= '9')
-		n = n * 10 + (*str++ - '0');
-	return (n);
-}
-
-int	parse_color(char *str, unsigned int *color)
-{
-	int	r;
-	int	g;
-	int	b;
-
-	while (*str == ' ' || *str == '\t')
-		str++;
-	r = ft_atoi_color(str);
-	while (*str && *str != ',')
-		str++;
-	if (!*str)
-		return (0);
-	g = ft_atoi_color(++str);
-	while (*str && *str != ',')
-		str++;
-	if (!*str)
-		return (0);
-	b = ft_atoi_color(++str);
-	if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255)
-		return (0);
-	*color = ((unsigned int)r << 16) | ((unsigned int)g << 8) | (unsigned int)b;
-	return (1);
-}

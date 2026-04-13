@@ -40,17 +40,29 @@ static char	*trim_path(char *str)
 int	parse_header_line(t_mlx *data, char *line, int *flags)
 {
 	if (ft_strncmp(line, "NO ", 3) == 0)
-		return (data->tex[NORTH].path = trim_path(line + 3), *flags |= 1, 1);
+		return (free(data->tex[NORTH].path),
+			data->tex[NORTH].path = trim_path(line + 3), *flags |= 1, 1);
 	if (ft_strncmp(line, "SO ", 3) == 0)
-		return (data->tex[SOUTH].path = trim_path(line + 3), *flags |= 2, 1);
+		return (free(data->tex[SOUTH].path),
+			data->tex[SOUTH].path = trim_path(line + 3), *flags |= 2, 1);
 	if (ft_strncmp(line, "EA ", 3) == 0)
-		return (data->tex[EAST].path = trim_path(line + 3), *flags |= 4, 1);
+		return (free(data->tex[EAST].path),
+			data->tex[EAST].path = trim_path(line + 3), *flags |= 4, 1);
 	if (ft_strncmp(line, "WE ", 3) == 0)
-		return (data->tex[WEST].path = trim_path(line + 3), *flags |= 8, 1);
+		return (free(data->tex[WEST].path),
+			data->tex[WEST].path = trim_path(line + 3), *flags |= 8, 1);
 	if (line[0] == 'F' && (line[1] == ' ' || line[1] == '\t'))
-		return (parse_color(line + 2, &data->floor_color), *flags |= 16, 1);
+	{
+		if (!parse_color(line + 2, &data->floor_color))
+			return (ft_putstr("Error: invalid color value (must be 0-255)\n"), -1);
+		return (*flags |= 16, 1);
+	}
 	if (line[0] == 'C' && (line[1] == ' ' || line[1] == '\t'))
-		return (parse_color(line + 2, &data->ceil_color), *flags |= 32, 1);
+	{
+		if (!parse_color(line + 2, &data->ceil_color))
+			return (ft_putstr("Error: invalid color value (must be 0-255)\n"), -1);
+		return (*flags |= 32, 1);
+	}
 	return (0);
 }
 

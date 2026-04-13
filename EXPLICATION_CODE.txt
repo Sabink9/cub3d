@@ -1,0 +1,928 @@
+================================================================================
+                         EXPLICATION COMPLETE DU PROJET CUB3D
+================================================================================
+
+Auteur : saciurus
+Projet : cub3d (42 school) - moteur de raycasting style Wolfenstein 3D
+
+
+================================================================================
+                              PARTIE 1 : LE FICHIER .h
+================================================================================
+
+--------------------------------------------------------------------------------
+1.1  INCLUDES ET DEFINES
+--------------------------------------------------------------------------------
+
+#include "../get_next_line/get_next_line.h"
+    -> Inclut la bibliothèque get_next_line pour lire un fichier ligne par ligne.
+
+#include "../minilibx-linux/mlx.h"
+    -> Inclut MiniLibX, la bibliothèque graphique de 42 pour ouvrir une fenêtre
+       et dessiner des pixels.
+
+#include <fcntl.h>      -> Pour open() (ouvrir des fichiers)
+#include <math.h>       -> Pour cos(), sin(), fabs() (fonctions mathématiques)
+#include <stdlib.h>     -> Pour malloc(), free(), exit()
+#include <unistd.h>     -> Pour write(), close()
+
+--- Les DEFINE ---
+
+M_PI = 3.14159265358979323846
+    -> La valeur de Pi. Le #ifndef vérifie si M_PI n'est pas déjà défini par
+       <math.h>, et si ce n'est pas le cas, on le définit manuellement.
+
+WIN_W = 1400
+    -> Largeur de la fenêtre de jeu en pixels.
+
+WIN_H = 1000
+    -> Hauteur de la fenêtre de jeu en pixels.
+
+FOV = 60.0
+    -> Field Of View (champ de vision) du joueur, en degrés. 60 degrés est un
+       champ de vision réaliste (ni trop large ni trop étroit).
+
+NORTH = 0
+SOUTH = 1
+EAST  = 2
+WEST  = 3
+    -> Ces 4 constantes représentent les 4 directions des murs. Elles servent
+       d'index dans le tableau tex[4] pour savoir quelle texture afficher selon
+       la face du mur touchée par le rayon.
+
+
+--------------------------------------------------------------------------------
+1.2  LES STRUCTURES
+--------------------------------------------------------------------------------
+
+--- t_tex ---
+    Représente UNE texture (image XPM chargée en mémoire).
+
+    void   *img       -> Pointeur vers l'objet image MiniLibX.
+    char   *addr      -> Adresse mémoire brute des pixels de la texture.
+                         Permet d'accéder directement à chaque pixel.
+    int     w         -> Largeur de la texture en pixels.
+    int     h         -> Hauteur de la texture en pixels.
+    int     bpp       -> Bits Per Pixel (bits par pixel, en général 32).
+                         Indique combien de bits codent 1 pixel.
+    int     line_len  -> Longueur d'une ligne en OCTETS dans la mémoire.
+                         Pour naviguer de ligne en ligne dans addr.
+    int     endian    -> Ordre des octets (0 = little endian, 1 = big endian).
+                         Détermine comment les composantes RGB sont rangées.
+    char   *path      -> Chemin du fichier .xpm de la texture (ex: "NO ./wall.xpm")
+
+    Il y a 4 textures : tex[NORTH], tex[SOUTH], tex[EAST], tex[WEST]
+
+
+--- t_player ---
+    Représente l'état du joueur dans le monde.
+
+    double  player_x    -> Position X du joueur dans la grille de la map
+                           (coordonnée flottante, ex: 3.5 = milieu de la case 3).
+    double  player_y    -> Position Y du joueur dans la grille de la map.
+    double  dir_angle   -> Angle de direction du joueur, en DEGRÉS (0-360).
+                           0° = Est, 90° = Sud, 180° = Ouest, 270° = Nord.
+
+
+--- t_map ---
+    Représente la carte du niveau.
+
+    char  **grid    -> Tableau 2D de chaînes de caractères. Chaque ligne est
+                       une ligne de la map. grid[y][x] donne le caractère à la
+                       position (x, y). '0' = sol, '1' = mur, ' ' = vide.
+    int     width   -> Largeur de la map (nombre de colonnes).
+    int     height  -> Hauteur de la map (nombre de lignes).
+
+
+--- t_mlx (structure principale) ---
+    C'est la structure CENTRALE qui contient TOUT. Elle est passée partout.
+
+    void         *mlx           -> Pointeur sur la connexion MiniLibX (init par mlx_init()).
+    void         *win           -> Pointeur sur la fenêtre (init par mlx_new_window()).
+    void         *img           -> L'image principale sur laquelle on dessine tout le frame.
+    char         *addr          -> Adresse mémoire brute des pixels de cette image.
+    int           bpp           -> Bits par pixel de l'image principale.
+    int           line_len      -> Longueur d'une ligne de l'image en octets.
+    int           endian        -> Endianness de l'image principale.
+    t_tex         tex[4]        -> Les 4 textures de murs (N, S, E, W).
+    void         *hands_texture -> La texture des mains du joueur (sprite).
+    char         *hands_addr    -> Adresse mémoire des pixels des mains.
+    int           hands_w       -> Largeur de la texture des mains.
+    int           hands_h       -> Hauteur de la texture des mains.
+    int           hands_bpp     -> Bits par pixel des mains.
+    int           hands_line_len-> Longueur de ligne des mains en octets.
+    int           hands_endian  -> Endianness des mains.
+    unsigned int  floor_color   -> Couleur du sol encodée en RGB (0xRRGGBB).
+    unsigned int  ceil_color    -> Couleur du plafond encodée en RGB.
+    t_player      player        -> Données du joueur (position + angle).
+    t_map         map           -> La grille de la map.
+    int           keys[65536]   -> Tableau de touches : keys[keycode] = 1 si la
+                                   touche est enfoncée, 0 sinon. Taille 65536
+                                   car les keycodes X11 vont jusqu'à 65535.
+
+
+--- t_ray ---
+    Résultat d'un lancer de rayon (un rayon = une colonne de pixels).
+
+    double  distance  -> Distance perpendiculaire entre le joueur et le mur touché.
+                         Utilisée pour calculer la hauteur du mur à l'écran.
+    double  hit_x     -> Coordonnée X exacte du point d'impact sur le mur.
+    double  hit_y     -> Coordonnée Y exacte du point d'impact sur le mur.
+    int     side      -> La face du mur touchée : NORTH, SOUTH, EAST ou WEST.
+                         Détermine quelle texture utiliser.
+
+
+--- t_parse ---
+    Variables d'état utilisées pendant la lecture du fichier .cub.
+
+    int  y       -> Index de la ligne courante qu'on est en train de remplir dans grid.
+    int  in_map  -> Booléen : 1 si on a commencé à lire les lignes de la map, 0 sinon.
+    int  flags   -> Bitmask des en-têtes trouvés (voir explication dans parse_header_line).
+
+
+--- t_square ---
+    Représente un carré à dessiner (utilisé pour la minimap).
+
+    int  x      -> Coordonnée X du coin supérieur gauche du carré.
+    int  y      -> Coordonnée Y du coin supérieur gauche du carré.
+    int  size   -> Taille du côté du carré en pixels.
+    int  color  -> Couleur du carré (format 0xRRGGBB).
+
+
+--- t_hand ---
+    Variables de travail pour dessiner un pixel de la texture des mains.
+
+    int           tex_x      -> Colonne dans la texture source (coordonnée X texture).
+    int           tex_y      -> Ligne dans la texture source (coordonnée Y texture).
+    int           screen_x   -> Colonne à l'écran où dessiner le pixel.
+    int           screen_y   -> Ligne à l'écran où dessiner le pixel.
+    char         *pixel_src  -> Pointeur vers le pixel source dans la texture des mains.
+    unsigned int  color      -> Valeur couleur du pixel source.
+    char         *pixel_dst  -> Pointeur vers le pixel destination dans l'image principale.
+    int           dx         -> Offset horizontal dans la texture des mains (0 à largeur_affichee).
+    int           dy         -> Offset vertical dans la texture des mains (0 à hauteur_affichee).
+    int          *info       -> Tableau [largeur_affichee, hauteur_affichee] de la texture mains.
+
+
+--- t_collision ---
+    Boîte de collision du joueur pour détecter les murs.
+
+    double  margin  -> Marge autour du joueur (0.35 unités de grille).
+                       Le joueur n'est pas un point : il a un "corps" de rayon 0.35.
+    int     x_min   -> Case X gauche de la boîte de collision.
+    int     x_max   -> Case X droite de la boîte de collision.
+    int     y_min   -> Case Y haute de la boîte de collision.
+    int     y_max   -> Case Y basse de la boîte de collision.
+
+
+--- t_dda ---
+    Variables internes de l'algorithme DDA (Digital Differential Analyzer).
+    C'est le cœur du raycasting pour trouver les murs.
+
+    double  side_dist[2]   -> Distance depuis le joueur jusqu'au prochain bord de case,
+                              [0]=axe X, [1]=axe Y. Mise à jour à chaque étape DDA.
+    double  delta_dist[2]  -> Distance entre deux bords de cases consécutifs,
+                              [0]=axe X, [1]=axe Y. Constante pour tout le rayon.
+    double  rdx            -> Composante X de la direction du rayon (cos(angle)).
+    double  rdy            -> Composante Y de la direction du rayon (sin(angle)).
+    int     step[2]        -> Direction du pas : +1 ou -1, [0]=axe X, [1]=axe Y.
+    int     map[2]         -> Case courante dans la grille : [0]=col X, [1]=ligne Y.
+
+
+--- t_column ---
+    Données pour dessiner une colonne verticale de pixels (un mur vu de face).
+
+    int  wall_height  -> Hauteur du mur en pixels à afficher (calculée depuis la distance).
+    int  draw_start   -> Pixel Y où commence le dessin du mur (depuis le haut).
+    int  draw_end     -> Pixel Y où finit le dessin du mur.
+    int  side         -> Face du mur : NORTH/SOUTH/EAST/WEST (pour la texture).
+    int  tex_x        -> Colonne dans la texture à utiliser pour cette colonne d'écran.
+
+
+================================================================================
+                         PARTIE 2 : EXPLICATION DES FONCTIONS
+================================================================================
+
+================================================================================
+  FICHIER : parse_map/utile_parse_map.c
+================================================================================
+
+--- ft_putchar(char c) ---
+    Écrit UN caractère sur la sortie standard (stdout) via write().
+    Simple wrapper sur write(1, &c, 1).
+
+--- ft_putstr(char *str) ---
+    Écrit une chaîne de caractères sur stdout.
+    Si str est NULL, ne fait rien (protection).
+    Sinon appelle write(1, str, longueur).
+
+--- strip_newline(char *line) ---
+    Supprime le '\n' final d'une ligne si il existe.
+    Trouve la longueur, regarde le dernier caractère, le remplace par '\0'.
+    Utilisé après get_next_line() car celle-ci garde le '\n'.
+
+--- ft_strncmp(const char *s1, const char *s2, int n) ---
+    Compare les n premiers caractères de s1 et s2.
+    Retourne 0 si égaux, une valeur positive/négative sinon.
+    Utilise unsigned char pour éviter les problèmes avec les caractères étendus.
+
+
+================================================================================
+  FICHIER : parse_map/parse_color.c
+================================================================================
+
+--- ft_atoi_color(char *str) [static] ---
+    Convertit une chaîne en entier en ignorant les espaces/tabulations au début.
+    Lit les chiffres un par un : n = n * 10 + chiffre.
+    Version simplifiée de atoi(), uniquement pour les nombres positifs.
+
+--- parse_color(char *str, unsigned int *color) ---
+    Parse une couleur au format "R,G,B" (ex: "220,100,0").
+
+    Etape 1 : ignore les espaces au début.
+    Etape 2 : lit R avec ft_atoi_color.
+    Etape 3 : avance jusqu'à la virgule, retourne 0 si pas de virgule.
+    Etape 4 : lit G, avance jusqu'à la 2e virgule, lit B.
+    Etape 5 : vérifie que R, G, B sont entre 0 et 255.
+    Etape 6 : encode la couleur en 0xRRGGBB :
+              *color = (R << 16) | (G << 8) | B
+              Le décalage << 16 met R dans les bits 16-23 (octet rouge).
+              Le décalage << 8 met G dans les bits 8-15 (octet vert).
+              B reste dans les bits 0-7 (octet bleu).
+    Retourne 1 si succès, 0 si erreur.
+
+
+================================================================================
+  FICHIER : parse_map/headers_and_lines.c
+================================================================================
+
+--- trim_path(char *str) [static] ---
+    Extrait le chemin de fichier propre depuis une ligne comme "NO ./textures/wall.xpm".
+
+    1. Saute les espaces/tabulations au début (str++).
+    2. Calcule la longueur en retirant les espaces, '\n', '\t', '\r' de la fin.
+    3. Alloue une nouvelle chaîne et copie les caractères.
+    4. Retourne le chemin propre, ou NULL si malloc échoue.
+
+--- parse_header_line(t_mlx *data, char *line, int *flags) ---
+    Analyse une ligne d'en-tête du fichier .cub et remplit la structure data.
+
+    Le système de flags est un BITMASK (chaque bit = un en-tête trouvé) :
+        bit 0 (valeur 1)  -> NO (texture Nord)
+        bit 1 (valeur 2)  -> SO (texture Sud)
+        bit 2 (valeur 4)  -> EA (texture Est)
+        bit 3 (valeur 8)  -> WE (texture Ouest)
+        bit 4 (valeur 16) -> F  (couleur sol)
+        bit 5 (valeur 32) -> C  (couleur plafond)
+    Quand tous les 6 bits sont à 1 : flags == 63 (0b111111).
+
+    Pour chaque préfixe reconnu :
+        - Libère l'ancien chemin si existant (évite une fuite mémoire).
+        - Appelle trim_path() pour extraire le chemin propre.
+        - Met le bit correspondant dans *flags avec |=.
+        - Retourne 1 (succès) ou -1 (erreur de parsing couleur).
+    Si la ligne n'est pas reconnue, retourne 0 (pas un en-tête).
+
+--- is_map_line(char *line) ---
+    Détecte si une ligne est une ligne de carte (contient 0, 1, espace, N/S/E/W, tab).
+    Retourne 0 si la ligne est vide ou contient un caractère invalide.
+    Retourne 1 si tous les caractères sont valides pour une ligne de map.
+
+--- has_all_headers(char *line, int *flags) ---
+    Identique à parse_header_line mais sans remplir data.
+    Sert uniquement à mettre à jour flags pour savoir si on a tous les en-têtes.
+    Retourne 1 si flags == 63 (tous les 6 en-têtes trouvés), 0 sinon.
+
+--- count_map_lines(int fd, int *flags) ---
+    Lit tout le fichier pour compter le nombre de lignes de la map.
+
+    Boucle sur get_next_line :
+        - Tant qu'on n'a pas tous les en-têtes, appelle has_all_headers.
+        - Quand flags == 63 ET que la ligne est une ligne de map : in_map = 1.
+        - Quand in_map est actif, compte chaque ligne non vide.
+    Retourne le comptage total des lignes de la map.
+    Ce comptage sert ensuite à allouer exactement la bonne taille pour grid.
+
+
+================================================================================
+  FICHIER : parse_map/fill_grid.c
+================================================================================
+
+--- pad_row(char **row, int target_width) [static] ---
+    Rembourre une ligne de la map avec des espaces pour qu'elle atteigne
+    target_width caractères. Nécessaire car les lignes de map peuvent avoir
+    des longueurs différentes.
+
+    Si la ligne est déjà assez longue, ne fait rien.
+    Sinon : alloue un nouveau buffer, copie les caractères existants,
+    remplit le reste avec ' ', libère l'ancienne chaîne.
+
+--- process_line(t_map *map, char *line, t_parse *p) [static] ---
+    Traite UNE ligne lue du fichier pendant le remplissage de la grille.
+
+    1. Supprime le '\n' avec strip_newline.
+    2. Si on n'est pas encore dans la map : vérifie les en-têtes.
+    3. Si tous les en-têtes sont là ET que c'est une ligne de map : active in_map.
+    4. Si on est dans la map et que la ligne n'est pas vide :
+       - Copie la ligne dans grid[p->y] avec ft_strdup.
+       - Met à jour map->width si cette ligne est plus large.
+       - Incrémente p->y.
+
+--- fill_rows(t_map *map, int fd) [static] ---
+    Lit le fichier entier et appelle process_line sur chaque ligne.
+    Initialise t_parse avec y=0, in_map=0, flags=0.
+    Après la boucle, met grid[p.y] = NULL (terminaison du tableau).
+
+--- fill_grid(t_map *map, int fd) ---
+    Alloue le tableau grid (map->height + 1 pointeurs pour le NULL final).
+    Appelle fill_rows pour remplir toutes les lignes.
+    Ensuite, parcourt toutes les lignes et appelle pad_row pour uniformiser
+    la largeur (toutes les lignes font map->width caractères).
+
+
+================================================================================
+  FICHIER : parse_map/validate_map.c
+================================================================================
+
+--- check_chars(t_map *map) [static] ---
+    Vérifie que chaque cellule de la grille ne contient que des caractères
+    autorisés : '0', '1', ' ', 'N', 'S', 'E', 'W'.
+    Parcourt toute la grille en double boucle (row/col).
+    Retourne 0 et affiche une erreur si un caractère invalide est trouvé.
+
+--- count_players(t_map *map) [static] ---
+    Compte le nombre de positions joueur (N, S, E ou W) dans la grille.
+    La map doit en avoir exactement 1. Retourne le comptage.
+
+--- cell_is_closed(t_map *map, int row, int col) [static] ---
+    Vérifie qu'une cellule jouable (sol ou joueur) est bien entourée de murs.
+
+    Retourne 0 (pas fermé) si :
+        - La cellule est sur la première ou dernière ligne/colonne du tableau.
+        - Un voisin direct (haut, bas, gauche, droite) est un espace ' '.
+    Retourne 1 si la cellule est correctement fermée.
+
+    ATTENTION : Cette vérification est simple (4-connexité) et ne vérifie pas
+    les diagonales, ni ne fait de flood fill. Elle suffit pour les maps bien formées.
+
+--- check_closed(t_map *map) [static] ---
+    Applique cell_is_closed à toutes les cellules '0', 'N', 'S', 'E', 'W'.
+    Si une cellule n'est pas fermée, retourne 0 avec un message d'erreur.
+
+--- validate_map(t_mlx *data, char *path) ---
+    Fonction principale de validation. Effectue 4 vérifications dans l'ordre :
+    1. Le fichier a l'extension ".cub".
+    2. Tous les caractères sont valides (check_chars).
+    3. Il y a exactement 1 joueur (count_players).
+    4. La map est fermée (check_closed).
+    Retourne 1 si tout est OK, 0 si une vérification échoue.
+
+
+================================================================================
+  FICHIER : parse_map/player.c
+================================================================================
+
+--- init_data_null(t_mlx *data) ---
+    Initialise tous les pointeurs de data à NULL et les entiers à 0.
+    Appelé avant toute autre initialisation pour éviter des free() invalides
+    sur des pointeurs non-initialisés.
+
+    Met à NULL : tex[i].path, tex[i].img (pour i=0 à 3),
+                 mlx, win, img, hands_texture, map.grid.
+    Met à 0 : map.width, map.height.
+
+--- set_player(t_map *map, t_player *player, int row, int col) [static] ---
+    Configure le joueur à partir de sa lettre dans la grille.
+
+    player_x = col + 0.5  -> Centre horizontal de la case
+    player_y = row + 0.5  -> Centre vertical de la case
+
+    Angle selon la lettre :
+        'N' -> 270° (regarder vers le haut dans le système où 0°=Est, 90°=Sud)
+        'S' -> 90°  (regarder vers le bas)
+        'E' -> 0°   (regarder vers la droite)
+        'W' -> 180° (regarder vers la gauche)
+
+    Remplace la lettre par '0' dans la grille (la case devient un sol).
+
+--- find_player(t_map *map, t_player *player) ---
+    Parcourt toute la grille à la recherche d'une lettre N, S, E ou W.
+    Quand trouvée, appelle set_player et retourne immédiatement.
+    Si aucun joueur n'est trouvé (ne devrait pas arriver après validate_map),
+    la fonction se termine sans rien faire.
+
+
+================================================================================
+  FICHIER : parse_map/create_map.c
+================================================================================
+
+--- drain_fd(int fd) [static] ---
+    Lit et vide complètement un descripteur de fichier sans rien faire des lignes.
+    Utilisé pour "consommer" le reste du fichier afin de libérer les ressources
+    internes de get_next_line (qui garde un buffer statique).
+
+--- parse_headers(t_mlx *data, int fd, int *flags) [static] ---
+    Lit le fichier ligne par ligne jusqu'à avoir trouvé les 6 en-têtes (flags==63).
+
+    Pour chaque ligne :
+        - Supprime le '\n'.
+        - Appelle parse_header_line qui remplit data et met à jour flags.
+        - Si parse_header_line retourne -1 (erreur couleur) : vide le fd et retourne 0.
+        - Libère la ligne.
+    Quand flags == 63 : sort de la boucle.
+    Vide le reste du fd avec drain_fd pour libérer get_next_line.
+    Retourne 1 si succès.
+
+--- free_data(t_mlx *data) ---
+    Libère toutes les données allouées dynamiquement dans data :
+    - Les 4 chemins de textures tex[i].path.
+    - La grille map.grid (chaque ligne puis le tableau de pointeurs).
+    Met les pointeurs libérés à NULL pour éviter les double-free.
+
+--- init_map(t_mlx *data, char *path) [static] ---
+    Première passe sur le fichier : initialise data et compte les lignes de map.
+
+    1. Appelle init_data_null (tout à NULL).
+    2. Ouvre le fichier.
+    3. Appelle count_map_lines pour compter et vérifier les en-têtes.
+    4. Ferme le fichier.
+    5. Vérifie que height_flags == 63 (tous les en-têtes présents).
+    6. Vérifie que height > 0 (la map n'est pas vide).
+    Retourne 1 si tout est bon.
+
+--- parse_map(t_mlx *data, char **av) ---
+    Fonction principale de parsing, appelée depuis main().
+
+    Etape 1 (init_map) : compte les lignes et vérifie les en-têtes.
+    Etape 2 (parse_headers) : relit le fichier pour remplir tex[].path,
+                              floor_color, ceil_color.
+    Etape 3 (fill_grid) : relit le fichier une 3e fois pour remplir map.grid.
+    Etape 4 (validate_map) : valide la map (chars, joueur, fermée).
+    Etape 5 (find_player) : localise le joueur et configure son état initial.
+
+    Retourne 1 si tout réussit, 0 avec cleanup si une étape échoue.
+    NOTE : Le fichier est ouvert/fermé 3 fois car get_next_line ne peut pas
+           "rembobiner" un fd déjà lu.
+
+
+================================================================================
+  FICHIER : raycasting/dda.c
+================================================================================
+
+PRINCIPE DU DDA (Digital Differential Analyzer) :
+    L'algorithme DDA permet de traverser une grille en suivant un rayon.
+    On avance case par case en choisissant toujours d'aller d'abord sur
+    le bord le plus proche (X ou Y).
+
+--- init_dda_x(t_mlx *data, t_dda *d) [static] ---
+    Initialise les variables DDA pour l'axe X.
+
+    delta_dist[0] : si rdx != 0, c'est |1/rdx| = distance pour traverser 1 case en X.
+                    si rdx == 0, c'est 1e30 (infini pratique) car le rayon est vertical.
+
+    Si rdx < 0 (rayon va vers la gauche) :
+        step[0] = -1
+        side_dist[0] = (player_x - map[0]) * delta_dist[0]
+        -> distance jusqu'au bord gauche de la case actuelle.
+
+    Si rdx >= 0 (rayon va vers la droite) :
+        step[0] = 1
+        side_dist[0] = (map[0] + 1.0 - player_x) * delta_dist[0]
+        -> distance jusqu'au bord droit de la case actuelle.
+
+--- init_dda_y(t_mlx *data, t_dda *d) [static] ---
+    Identique à init_dda_x mais pour l'axe Y.
+    delta_dist[1] = |1/rdy|  (ou 1e30 si rdy == 0)
+    step[1] et side_dist[1] calculés pareil selon le signe de rdy.
+
+--- init_dda(t_mlx *data, double angle, t_dda *d) ---
+    Initialise l'ensemble de la structure DDA pour un rayon à l'angle donné.
+
+    1. Calcule rdx = cos(angle en radians) et rdy = sin(angle en radians).
+       (Conversion degrés -> radians : angle * M_PI / 180.0)
+    2. Initialise la case de départ : map[0] = (int)player_x, map[1] = (int)player_y.
+       Le cast en int donne la case entière où se trouve le joueur.
+    3. Appelle init_dda_x et init_dda_y.
+
+--- dda_step(t_dda *d, int *side) ---
+    Effectue UN pas de l'algorithme DDA : avance jusqu'au prochain bord de case.
+
+    Compare side_dist[0] (prochain bord X) et side_dist[1] (prochain bord Y).
+
+    Si le bord X est plus proche :
+        Avance le compteur X : side_dist[0] += delta_dist[0]
+        Passe à la case suivante en X : map[0] += step[0]
+        *side = 0 (on a traversé un bord vertical -> mur Nord ou Sud)
+
+    Sinon :
+        Avance le compteur Y : side_dist[1] += delta_dist[1]
+        Passe à la case suivante en Y : map[1] += step[1]
+        *side = 1 (on a traversé un bord horizontal -> mur Est ou Ouest)
+
+
+================================================================================
+  FICHIER : raycasting/hit_wall.c
+================================================================================
+
+--- out_of_bounds(void) ---
+    Retourne un t_ray "par défaut" quand un rayon sort de la map sans toucher de mur.
+    distance = 999.0 (très loin, le mur sera quasi-invisible).
+    hit_x = 0, hit_y = 0, side = NORTH (valeurs arbitraires).
+
+--- hit_wall_x(t_mlx *data, t_dda *d) [static] ---
+    Calcule le résultat quand le rayon a touché un mur par un bord VERTICAL (axe X).
+
+    perp_dist = side_dist[0] - delta_dist[0]
+    -> La DISTANCE PERPENDICULAIRE au plan de projection.
+       On retire delta_dist car on a déjà fait un pas de trop dans dda_step.
+
+    result.hit_y = player_y + perp_dist * rdy
+    -> Coordonnée Y exacte du point d'impact (pour calculer tex_x).
+
+    result.hit_x = 0 (non utilisé pour un mur vertical).
+
+    Direction selon step[0] :
+        step[0] > 0 (rayon va vers la droite) -> face WEST du mur.
+        step[0] < 0 (rayon va vers la gauche) -> face EAST du mur.
+
+    Clamp de perp_dist à 0.1 minimum pour éviter un mur de taille infinie.
+
+--- hit_wall(t_mlx *data, t_dda *d, int side) ---
+    Calcule le résultat quand le rayon a touché un mur.
+
+    Si side == 0 : délègue à hit_wall_x (bord vertical).
+    Si side == 1 : calcule pour un bord HORIZONTAL (axe Y).
+        perp_dist = side_dist[1] - delta_dist[1]
+        result.hit_x = player_x + perp_dist * rdx
+        Direction selon step[1] :
+            step[1] > 0 (rayon va vers le bas) -> face NORTH.
+            step[1] < 0 (rayon va vers le haut) -> face SOUTH.
+
+    POURQUOI NORTH/SOUTH SONT INVERSES ?
+    Dans le système de coordonnées, Y augmente vers le bas. Donc quand rdy > 0,
+    le joueur regarde vers le bas de l'écran (face Sud du mur = côté NORTH).
+
+
+================================================================================
+  FICHIER : raycasting/render_cast.c
+================================================================================
+
+--- cast_ray(t_mlx *data, double angle) [static] ---
+    Lance UN rayon depuis le joueur à l'angle donné et retourne le résultat.
+
+    1. Initialise le DDA (init_dda).
+    2. Boucle infinie :
+       a. Fait un pas DDA (dda_step).
+       b. Vérifie si la case est hors de la map -> retourne out_of_bounds().
+       c. Vérifie si la case est un mur '1' -> retourne hit_wall().
+
+    La boucle s'arrête garantissant toujours par le retour de hit_wall ou out_of_bounds.
+
+--- calc_tex_x(t_ray ray, int wall_w) [static] ---
+    Calcule la colonne X dans la texture à afficher pour cette colonne d'écran.
+
+    wall_x = partie décimale de la coordonnée d'impact.
+        Pour un mur Nord/Sud : wall_x = hit_x - (int)hit_x  (fraction de case en X)
+        Pour un mur Est/Ouest : wall_x = hit_y - (int)hit_y  (fraction de case en Y)
+
+    Si wall_x < 0 (peut arriver par arrondi) : wall_x += 1.0
+
+    tex_x = (int)(wall_x * wall_w / 4)
+    -> Convertit la fraction 0.0-1.0 en un index de colonne dans la texture.
+       La division par 4 vient du fait que la texture est divisée en 4 sections
+       (artefact de l'implémentation).
+
+    Clamp tex_x entre 0 et wall_w - 1.
+
+--- draw_column_pixel(t_mlx *data, int x, int y, t_column *col) [static] ---
+    Dessine UN pixel à la position (x, y) de l'image principale.
+
+    Calcule l'adresse du pixel dans l'image :
+        pixel = addr + (y * line_len + x * (bpp/8))
+
+    Si y < draw_start : dessine la couleur du plafond (ceil_color).
+    Si draw_start <= y <= draw_end : dessine la texture du mur.
+        - Calcule tex_y : position dans la texture selon la hauteur affichée.
+          tex_y = (y - draw_start) * tex->h / wall_height
+          -> Mappe le pixel d'écran vers le pixel texture proportionnellement.
+        - Clamp tex_y entre 0 et tex->h - 1.
+        - Lit le pixel dans la texture : tex_pixel = tex->addr + (tex_y * line_len + tex_x * bpp/8)
+        - Copie la couleur dans l'image principale.
+    Si y > draw_end : dessine la couleur du sol (floor_color).
+
+--- draw_column(t_mlx *data, int x, t_ray ray) [static] ---
+    Calcule et dessine une colonne verticale complète (de y=0 à y=WIN_H-1).
+
+    wall_height = (WIN_H * 1.5) / ray.distance
+    -> Plus le mur est proche (distance petite), plus il est haut.
+       Le facteur 1.5 est une constante de calibration visuelle.
+
+    Limite wall_height à WIN_H * 5 pour éviter des calculs absurdes.
+
+    draw_start = (WIN_H / 2) - (wall_height / 2)  -> ligne du haut du mur
+    draw_end   = (WIN_H / 2) + (wall_height / 2)  -> ligne du bas du mur
+
+    Calcule tex_x avec calc_tex_x.
+    Boucle sur tous les pixels de la colonne (0 à WIN_H-1) et appelle draw_column_pixel.
+
+--- render_3d(t_mlx *data) ---
+    Fonction principale de rendu d'une frame complète.
+
+    Pour chaque colonne x de 0 à WIN_W-1 :
+        1. Calcule l'offset angulaire : angle_offset = (FOV / WIN_W) * x - (FOV / 2.0)
+           -> La colonne la plus à gauche (x=0) a offset = -FOV/2 = -30°
+           -> La colonne du milieu a offset = 0°
+           -> La colonne la plus à droite a offset = +FOV/2 = +30°
+        2. ray_angle = dir_angle + angle_offset  -> angle réel du rayon
+        3. Lance le rayon (cast_ray) et dessine la colonne (draw_column).
+
+    Après toutes les colonnes :
+        4. Dessine la minimap (draw_minimap).
+        5. Dessine les mains (draw_hands).
+        6. Envoie l'image à la fenêtre (mlx_put_image_to_window).
+
+
+================================================================================
+  FICHIER : render_game/draw_minimap.c
+================================================================================
+
+--- draw_pixel(t_mlx *data, int pixel_x, int pixel_y, int color) [static] ---
+    Dessine un seul pixel dans l'image principale après vérification des bornes.
+    Calcule l'adresse mémoire : addr + (pixel_y * line_len + pixel_x * bpp/8).
+    N'affiche rien si le pixel est hors de la fenêtre.
+
+--- draw_square(t_mlx *data, t_square sq) [static] ---
+    Dessine un carré plein de taille sq.size à la position (sq.x, sq.y).
+    Double boucle (i, j) de 0 à sq.size, appelle draw_pixel pour chaque pixel.
+
+--- draw_minimap_grid(t_mlx *data, int scale, int *offset) [static] ---
+    Dessine la grille de la map en petit dans le coin supérieur gauche.
+
+    Pour chaque cellule de la grille :
+        - Si c'est '1' (mur) : couleur 0x00245969 (bleu-vert foncé).
+        - Si c'est '0' (sol) : couleur 0x00000000 (noir).
+        Position à l'écran : offset + (col * scale, row * scale).
+        scale = 10 pixels par case de map.
+
+--- draw_minimap(t_mlx *data) ---
+    Dessine la minimap complète.
+
+    scale = 10 (chaque case = 10x10 pixels)
+    offset = {10, 10} (la minimap est à 10px du bord haut-gauche)
+
+    1. Dessine la grille (draw_minimap_grid).
+    2. Dessine le joueur : carré rouge (0xFF0000) de 4x4 pixels.
+       Position joueur : offset + (player_x * scale - 2, player_y * scale - 2)
+       Le -2 centre le carré sur la position du joueur.
+
+
+================================================================================
+  FICHIER : render_game/draw_hands.c
+================================================================================
+
+--- is_green_pixel(unsigned int color) [static] ---
+    Détecte si un pixel est "vert dominant" (fond vert de la texture des mains).
+
+    Extrait R, G, B depuis la couleur 0xRRGGBB :
+        R = (color >> 16) & 0xFF
+        G = (color >> 8) & 0xFF
+        B = color & 0xFF
+
+    Retourne 1 (c'est un pixel vert à ignorer) si :
+        G > 80 ET G > R + 30 ET G > B + 30
+    -> Le vert est fort ET domine le rouge ET le bleu de 30 unités.
+    C'est une technique de "green screen" : les pixels verts sont transparents.
+
+--- init_hand(t_mlx *data, t_hand *h) [static] ---
+    Calcule les coordonnées texture et écran pour un pixel des mains.
+
+    tex_x = dx * hands_w / info[0]  -> Mappe dx (0 à largeur_affichée) vers la texture.
+    tex_y = dy * hands_h / info[1]  -> Mappe dy (0 à hauteur_affichée) vers la texture.
+    screen_x = (WIN_W - info[0]) / 2 + dx  -> Centre horizontalement sur l'écran.
+    screen_y = WIN_H - info[1] + dy         -> Place en bas de l'écran.
+
+    Retourne 0 si le pixel est hors écran, 1 sinon.
+
+--- draw_hand_pixel(t_mlx *data, int dx, int dy, int *info) [static] ---
+    Dessine un seul pixel de la texture des mains sur l'image principale.
+
+    1. Remplit t_hand et appelle init_hand pour calculer les coordonnées.
+    2. Lit le pixel source dans la texture des mains.
+    3. Si ce n'est PAS un pixel vert (is_green_pixel retourne 0) :
+       Copie la couleur dans l'image principale à la position écran calculée.
+
+--- draw_hands(t_mlx *data) ---
+    Dessine la texture des mains en bas au centre de l'écran.
+
+    Calcule la taille d'affichage proportionnelle à la résolution :
+        info[0] = hands_w * WIN_W / 800   -> Largeur mise à l'échelle.
+        info[1] = hands_h * WIN_H / 600   -> Hauteur mise à l'échelle.
+
+    Double boucle dy/dx sur toute la zone d'affichage des mains.
+    Pour chaque pixel, appelle draw_hand_pixel.
+
+
+================================================================================
+  FICHIER : render_game/key_and_window.c
+================================================================================
+
+--- unload_tex(t_mlx *data) ---
+    Libère les images MiniLibX des textures.
+
+    Pour i de 0 à 3 : si tex[i].img existe, appelle mlx_destroy_image.
+    Libère aussi la texture des mains si elle existe.
+    NE libère PAS tex[i].path (géré par free_data).
+
+--- close_window(t_mlx *data) ---
+    Callback appelé quand on clique sur la croix de fermeture (événement X11 17).
+
+    1. Libère les données de la map (free_data).
+    2. Libère les textures (unload_tex).
+    3. Détruit l'image principale, la fenêtre, la connexion MiniLibX.
+    4. Libère data->mlx.
+    5. exit(0) -> Termine le programme proprement.
+
+--- key_press(int keycode, t_mlx *data) ---
+    Callback appelé à chaque touche enfoncée (événement X11 2).
+
+    Si keycode == 65307 (Echap) : ferme la fenêtre immédiatement.
+    Si keycode < 65536 : met keys[keycode] = 1 (touche "active").
+    Retourne 0 (convention MiniLibX).
+
+--- key_release(int keycode, t_mlx *data) ---
+    Callback appelé à chaque touche relâchée (événement X11 3).
+    Met keys[keycode] = 0 (touche "inactive").
+
+--- init_keys(t_mlx *data) ---
+    Initialise tout le tableau keys[65536] à 0.
+    Appelé une fois au démarrage avant la boucle de jeu.
+
+
+================================================================================
+  FICHIER : render_game/moovs_and_env.c
+================================================================================
+
+--- handle_movement(t_mlx *data, double *new_x, double *new_y, int *moved) ---
+    Gère le mouvement avant/arrière (touches W=119 et S=115).
+
+    move_speed = 0.05 * WIN_W / 800.0
+    -> Vitesse de base 0.05 unités/frame, mise à l'échelle selon la résolution.
+
+    dir_x = cos(dir_angle en radians)  -> Composante X de la direction.
+    dir_y = sin(dir_angle en radians)  -> Composante Y de la direction.
+
+    W (119) : new_x += dir_x * speed, new_y += dir_y * speed  -> avancer
+    S (115) : new_x -= dir_x * speed, new_y -= dir_y * speed  -> reculer
+
+--- handle_strafe(t_mlx *data, double *new_x, double *new_y, int *moved) ---
+    Gère le déplacement latéral (touches A=97 et D=100).
+
+    Pour se déplacer perpendiculairement à la direction :
+        Direction perpendiculaire = (dir_y, -dir_x) pour aller à gauche.
+                                  = (-dir_y, dir_x) pour aller à droite.
+
+    A (97) : new_x += dir_y * speed, new_y -= dir_x * speed  -> strafe gauche
+    D (100) : new_x -= dir_y * speed, new_y += dir_x * speed -> strafe droite
+
+--- handle_rotation(t_mlx *data, int *moved) ---
+    Gère la rotation de la caméra (flèches gauche=65361 et droite=65363).
+
+    rot_speed = 1.5 * WIN_W / 800.0  (degrés par frame)
+
+    Flèche gauche (65361) : dir_angle -= rot_speed.
+        Si dir_angle < 0 : dir_angle += 360 (reste dans 0-360).
+    Flèche droite (65363) : dir_angle += rot_speed.
+        Si dir_angle >= 360 : dir_angle -= 360 (reste dans 0-360).
+
+--- check_row(t_mlx *data, int y, int x_min, int x_max) ---
+    Vérifie qu'une ligne entière de la boîte de collision est libre (pas de mur).
+
+    Si y est hors de la map : retourne 0 (collision avec le bord).
+    Parcourt les colonnes de x_min à x_max :
+        Si x est hors de la map OU grid[y][x] == '1' : retourne 0.
+    Retourne 1 si toute la ligne est libre.
+
+--- check_collision(t_mlx *data, double new_x, double new_y) ---
+    Vérifie si le joueur peut se déplacer à la position (new_x, new_y).
+
+    Calcule la boîte de collision avec margin = 0.35 :
+        x_min = (int)(new_x - 0.35)
+        x_max = (int)(new_x + 0.35)
+        y_min = (int)(new_y - 0.35)
+        y_max = (int)(new_y + 0.35)
+
+    Parcourt chaque ligne y de y_min à y_max, appelle check_row.
+    Si une case est un mur : retourne 0 (collision).
+    Retourne 1 si le déplacement est possible.
+
+
+================================================================================
+  FICHIER : render_game/main.c
+================================================================================
+
+--- game_loop(t_mlx *data) [static] ---
+    Callback appelé par mlx_loop_hook à chaque frame (aussi vite que possible).
+
+    1. Sauvegarde les positions actuelles du joueur (orig_x, orig_y).
+    2. Crée new_x = orig_x, new_y = orig_y pour tester le nouveau déplacement.
+    3. Appelle handle_movement (avance/recule, modifie new_x/new_y).
+    4. Appelle handle_strafe (gauche/droite, modifie new_x/new_y).
+    5. Appelle handle_rotation (tourne, modifie dir_angle).
+
+    Si quelque chose a bougé (moved == 1) :
+        - Test X séparément : si check_collision(new_x, orig_y) OK -> player_x = new_x
+        - Test Y séparément : si check_collision(orig_x, new_y) OK -> player_y = new_y
+
+        POURQUOI SÉPARER X ET Y ?
+        Si le joueur court vers un mur en diagonale, bloquer X et Y ensemble
+        l'empêcherait de longer le mur. En testant séparément, il peut
+        "glisser" le long du mur.
+
+        - Redessine la frame avec render_3d.
+
+    Retourne 0 (convention MiniLibX).
+
+--- load_textures(t_mlx *data) [static] ---
+    Charge les 4 textures de murs et la texture des mains depuis les fichiers XPM.
+
+    Pour i de 0 à 3 :
+        - Vérifie que le chemin existe (tex[i].path != NULL).
+        - Charge l'image avec mlx_xpm_file_to_image -> obtient img, w, h.
+        - Obtient l'adresse mémoire des pixels avec mlx_get_data_addr -> addr, bpp, line_len, endian.
+
+    Charge ensuite hands.xpm de la même manière.
+    Retourne 0 avec message d'erreur si un chargement échoue.
+
+--- destroy_mlx(t_mlx *data) [static] ---
+    Libère les ressources MiniLibX de base (image principale, fenêtre, display).
+    Appelé en cas d'échec dans init_mlx.
+
+--- init_mlx(t_mlx *data) [static] ---
+    Initialise toute la couche graphique MiniLibX.
+
+    1. mlx_init() -> Ouvre la connexion au serveur X11.
+    2. mlx_new_window() -> Crée la fenêtre WIN_W x WIN_H intitulée "Cub3D".
+    3. load_textures() -> Charge tous les fichiers XPM.
+    4. mlx_new_image() -> Crée l'image-tampon WIN_W x WIN_H (double buffering).
+    5. mlx_get_data_addr() -> Obtient l'adresse mémoire des pixels de l'image.
+
+    En cas d'échec à chaque étape : libère ce qui a été alloué et retourne 0.
+
+--- main(int ac, char **av) ---
+    Point d'entrée du programme.
+
+    1. Vérifie qu'il y a exactement 1 argument (le fichier .cub).
+    2. parse_map() -> Parse le fichier, remplit data.
+    3. init_keys() -> Initialise le tableau des touches à 0.
+    4. init_mlx() -> Ouvre la fenêtre et charge les textures.
+    5. render_3d() -> Dessine le premier frame avant d'entrer dans la boucle.
+    6. mlx_hook(win, 2, ..., key_press) -> Event handler touche enfoncée.
+    7. mlx_hook(win, 3, ..., key_release) -> Event handler touche relâchée.
+    8. mlx_hook(win, 17, 0, close_window) -> Event handler fermeture fenêtre.
+    9. mlx_loop_hook(mlx, game_loop) -> Fonction appelée chaque frame.
+    10. mlx_loop() -> Lance la boucle d'événements (bloquant, ne retourne pas).
+
+    Retourne 1 en cas d'erreur, 0 en succès (mais mlx_loop() bloque).
+
+
+================================================================================
+                         RESUME : FLUX D'EXECUTION
+================================================================================
+
+    main()
+     |
+     +-> parse_map()          : Lit le .cub, charge la grille et les métadonnées
+     |    +-> init_map()      : Compte les lignes, vérifie les en-têtes
+     |    +-> parse_headers() : Remplit paths textures, couleurs sol/plafond
+     |    +-> fill_grid()     : Remplit map.grid[][] avec les caractères
+     |    +-> validate_map()  : Vérifie extension, chars, joueur unique, fermée
+     |    +-> find_player()   : Positionne le joueur, remplace N/S/E/W par '0'
+     |
+     +-> init_keys()          : Tableau keys[65536] = {0}
+     |
+     +-> init_mlx()           : Ouvre fenêtre, charge textures, crée image-tampon
+     |
+     +-> render_3d()          : Dessine le premier frame
+     |
+     +-> mlx_hook() x3        : Enregistre les callbacks clavier et fermeture
+     +-> mlx_loop_hook()      : Enregistre game_loop comme callback de frame
+     +-> mlx_loop()           : Lance la boucle infinie
+                |
+                +-> game_loop() chaque frame :
+                     +-> handle_movement()  : W/S
+                     +-> handle_strafe()    : A/D
+                     +-> handle_rotation()  : fleches
+                     +-> check_collision()  : test murs
+                     +-> render_3d()        : redessine
+                           +-> cast_ray() x WIN_W : un rayon par colonne
+                           |    +-> init_dda()    : prepare le DDA
+                           |    +-> dda_step()    : avance case par case
+                           |    +-> hit_wall()    : calcule distance et face
+                           +-> draw_column() x WIN_W : dessine plafond/mur/sol
+                           +-> draw_minimap()     : minimap coin haut-gauche
+                           +-> draw_hands()       : sprite mains en bas
+                           +-> mlx_put_image_to_window() : envoie le frame
+
+================================================================================
+                              FIN DU DOCUMENT
+================================================================================

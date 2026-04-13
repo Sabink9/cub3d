@@ -12,8 +12,27 @@
 
 #include "../cub3d.h"
 
+void	unload_tex(t_mlx *data)
+{
+	int	i;
+
+	i = 0;
+	while (i < 4)
+	{
+		if (data->tex[i].img)
+			mlx_destroy_image(data->mlx, data->tex[i].img);
+		i++;
+	}
+	if (data->hands_texture)
+		mlx_destroy_image(data->mlx, data->hands_texture);
+}
+
 int	close_window(t_mlx *data)
 {
+	free_data(data);
+	unload_tex(data);
+	if (data->img)
+		mlx_destroy_image(data->mlx, data->img);
 	mlx_destroy_window(data->mlx, data->win);
 	mlx_destroy_display(data->mlx);
 	free(data->mlx);

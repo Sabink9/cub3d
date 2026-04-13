@@ -12,64 +12,60 @@
 
 #include "../cub3d.h"
 
-static void	set_player(t_map *map, t_player *player, int row, int col)
+static void	drain_fd(int fd)
 {
-	char	c;
+	char	*line;
 
-	c = map->grid[row][col];
-	player->player_x = col + 0.5;
-	player->player_y = row + 0.5;
-	if (c == 'N')
-		player->dir_angle = 270.0;
-	else if (c == 'S')
-		player->dir_angle = 90.0;
-	else if (c == 'E')
-		player->dir_angle = 0.0;
-	else
-		player->dir_angle = 180.0;
-	map->grid[row][col] = '0';
-}
-
-static void	find_player(t_map *map, t_player *player)
-{
-	int		row;
-	int		col;
-	char	c;
-
-	row = 0;
-	while (row < map->height)
+	line = get_next_line(fd);
+	while (line)
 	{
-		col = 0;
-		while (col < map->width)
-		{
-			c = map->grid[row][col];
-			if (c == 'N' || c == 'S' || c == 'E' || c == 'W')
-			{
-				set_player(map, player, row, col);
-				return ;
-			}
-			col++;
-		}
-		row++;
+		free(line);
+		line = get_next_line(fd);
 	}
 }
 
-static void	parse_headers(t_mlx *data, int fd, int *flags)
+static int	parse_headers(t_mlx *data, int fd, int *flags)
 {
 	char	*line;
+	int		ret;
 
 	line = get_next_line(fd);
 	while (line && *flags != 63)
 	{
 		strip_newline(line);
-		parse_header_line(data, line, flags);
+		ret = parse_header_line(data, line, flags);
 		free(line);
+		if (ret == -1)
+			return (drain_fd(fd), 0);
 		line = get_next_line(fd);
 	}
-	while (line)
-	{
+	if (line)
 		free(line);
-		line = get_next_line(fd);
+	drain_fd(fd);
+	return (1);
+}
+
+void	free_data(t_mlx *data)
+{
+	int	i;
+
+	i = 0;
+	while (i < 4)
+	{
+		if (data->tex[i].path)
+		{
+			free(data->tex[i].path);
+			data->tex[i].path = NULL;
+		}
+		i++;
+	}
+	if (data->map.grid)
+	{
+		i = 0;
+		while (data->map.grid[i])
+			free(data->map.grid[i++]);
+		free(data->map.grid);
+		data->map.grid = NULL;
 	}
 }
 
@@ -78,17 +74,17 @@ static int	init_map(t_mlx *data, char *path)
 	int	fd;
 	int	height_flags;
 
-	data->map.grid = NULL;
-	data->map.width = 0;
-	data->map.height = 0;
+	init_data_null(data);
 	height_flags = 0;
 	fd = open(path, O_RDONLY);
 	if (fd == -1)
-		return (printf("Error: cannot open file\n"), 0);
+		return (ft_putstr("Error: cannot open file\n"), 0);
 	data->map.height = count_map_lines(fd, &height_flags);
 	close(fd);
+	if (height_flags != 63)
+		return (ft_putstr("Error: missing identifiers in .cub file\n"), 0);
 	if (data->map.height == 0)
-		return (printf("Error: no map found\n"), 0);
+		return (ft_putstr("Error: no map found\n"), 0);
 	return (1);
 }
 
@@ -101,13 +97,17 @@ int	parse_map(t_mlx *data, char **av)
 		return (0);
 	flags = 0;
 	fd = open(av[1], O_RDONLY);
-	parse_headers(data, fd, &flags);
+	if (!parse_headers(data, fd, &flags))
+		return (close(fd), free_data(data), 0);
 	close(fd);
 	if (flags != 63)
-		return (printf("Error: missing identifiers in .cub file\n"), 0);
+		return (free_data(data),
+			ft_putstr("Error: missing identifiers in .cub file\n"), 0);
 	fd = open(av[1], O_RDONLY);
 	fill_grid(&data->map, fd);
 	close(fd);
+	if (!validate_map(data, av[1]))
+		return (free_data(data), 0);
 	find_player(&data->map, &data->player);
 	return (1);
 }

@@ -17,7 +17,6 @@
 # include "../minilibx-linux/mlx.h"
 # include <fcntl.h>
 # include <math.h>
-# include <stdio.h>
 # include <stdlib.h>
 # include <unistd.h>
 
@@ -25,8 +24,8 @@
 #  define M_PI 3.14159265358979323846
 # endif
 
-# define WIN_W 800
-# define WIN_H 600
+# define WIN_W 1400
+# define WIN_H 1000
 # define FOV 60.0
 
 /* Wall face directions */
@@ -150,11 +149,21 @@ typedef struct s_column
 	int				tex_x;
 }					t_column;
 
+/* Utils */
+void				ft_putchar(char c);
+void				ft_putstr(char *str);
+
+/* Cleanup */
+void				free_data(t_mlx *data);
+void				unload_tex(t_mlx *data);
+
 /* Parsing */
 // Utils
 void				strip_newline(char *line);
 int					ft_strncmp(const char *s1, const char *s2, int n);
 int					parse_color(char *str, unsigned int *color);
+void				init_data_null(t_mlx *data);
+void				find_player(t_map *map, t_player *player);
 // Headers
 int					parse_header_line(t_mlx *data, char *line, int *flags);
 int					is_map_line(char *line);
@@ -163,6 +172,7 @@ int					count_map_lines(int fd, int *flags);
 // Grid
 void				fill_grid(t_map *map, int fd);
 // Map
+int					validate_map(t_mlx *data, char *path);
 int					parse_map(t_mlx *data, char **av);
 
 /* Raycasting */

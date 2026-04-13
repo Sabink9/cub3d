@@ -1,6 +1,7 @@
 CC = cc
 CFLAGS = -Wall -Werror -Wextra -I.././get_next_line
 LDFLAGS = -L .././minilibx-linux -lmlx -lX11 -lXext -lm
+ASAN_FLAGS = -fsanitize=address,leak -g
 RM = rm -rf
 
 SRC =	render_game/draw_hands.c \
@@ -12,6 +13,9 @@ SRC =	render_game/draw_hands.c \
 	parse_map/fill_grid.c \
 	parse_map/headers_and_lines.c \
 	parse_map/utile_parse_map.c \
+	parse_map/validate_map.c \
+	parse_map/player.c \
+	parse_map/parse_color.c \
 	raycasting/dda.c \
 	raycasting/hit_wall.c \
 	raycasting/render_cast.c \
@@ -35,6 +39,9 @@ clean:
 fclean: clean
 	$(RM) $(NAME)
 
+asan: fclean
+	$(MAKE) all CFLAGS="$(CFLAGS) $(ASAN_FLAGS)" LDFLAGS="$(LDFLAGS) $(ASAN_FLAGS)"
+
 re: fclean all
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re asan

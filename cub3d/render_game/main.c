@@ -47,11 +47,12 @@ static int	load_textures(t_mlx *data)
 	while (i < 4)
 	{
 		if (!data->tex[i].path)
-			return (printf("Error: missing texture path %d\n", i), 0);
+			return (ft_putstr("Error: missing texture path\n"), 0);
 		data->tex[i].img = mlx_xpm_file_to_image(data->mlx,
 				data->tex[i].path, &data->tex[i].w, &data->tex[i].h);
 		if (!data->tex[i].img)
-			return (printf("Error: texture %s\n", data->tex[i].path), 0);
+			return (ft_putstr("Error: texture "), ft_putstr(data->tex[i].path),
+				ft_putchar('\n'), 0);
 		data->tex[i].addr = mlx_get_data_addr(data->tex[i].img,
 				&data->tex[i].bpp, &data->tex[i].line_len,
 				&data->tex[i].endian);
@@ -60,10 +61,20 @@ static int	load_textures(t_mlx *data)
 	data->hands_texture = mlx_xpm_file_to_image(data->mlx,
 			"../sprites/hands.xpm", &data->hands_w, &data->hands_h);
 	if (!data->hands_texture)
-		return (printf("Error: hands texture\n"), 0);
+		return (ft_putstr("Error: hands texture\n"), 0);
 	data->hands_addr = mlx_get_data_addr(data->hands_texture,
 			&data->hands_bpp, &data->hands_line_len, &data->hands_endian);
 	return (1);
+}
+
+static void	destroy_mlx(t_mlx *data)
+{
+	if (data->img)
+		mlx_destroy_image(data->mlx, data->img);
+	if (data->win)
+		mlx_destroy_window(data->mlx, data->win);
+	mlx_destroy_display(data->mlx);
+	free(data->mlx);
 }
 
 static int	init_mlx(t_mlx *data)
@@ -73,12 +84,12 @@ static int	init_mlx(t_mlx *data)
 		return (0);
 	data->win = mlx_new_window(data->mlx, WIN_W, WIN_H, "Cub3D");
 	if (!data->win)
-		return (0);
+		return (mlx_destroy_display(data->mlx), free(data->mlx), 0);
 	if (!load_textures(data))
-		return (0);
+		return (unload_tex(data), destroy_mlx(data), 0);
 	data->img = mlx_new_image(data->mlx, WIN_W, WIN_H);
 	if (!data->img)
-		return (0);
+		return (unload_tex(data), destroy_mlx(data), 0);
 	data->addr = mlx_get_data_addr(data->img, &data->bpp, &data->line_len,
 			&data->endian);
 	return (1);
@@ -89,12 +100,12 @@ int	main(int ac, char **av)
 	t_mlx	data;
 
 	if (ac != 2)
-		return (printf("Usage: ./cub3d <map.cub>\n"), 1);
+		return (ft_putstr("Usage: ./cub3d <map.cub>\n"), 1);
 	if (!parse_map(&data, av))
 		return (1);
 	init_keys(&data);
 	if (!init_mlx(&data))
-		return (1);
+		return (free_data(&data), 1);
 	render_3d(&data);
 	mlx_hook(data.win, 2, 1L << 0, key_press, &data);
 	mlx_hook(data.win, 3, 1L << 1, key_release, &data);
