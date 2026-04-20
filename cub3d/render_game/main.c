@@ -5,8 +5,8 @@
 /*                                                    +:+ +:+         +:+     */
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/06 14:41:30 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/06 15:56:59 by saciurus         ###   ########.fr       */
+/*   Created: 2026/04/20 15:35:53 by saciurus          #+#    #+#             */
+/*   Updated: 2026/04/20 15:36:51 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -48,8 +48,8 @@ static int	load_textures(t_mlx *data)
 	{
 		if (!data->tex[i].path)
 			return (ft_putstr("Error: missing texture path\n"), 0);
-		data->tex[i].img = mlx_xpm_file_to_image(data->mlx,
-				data->tex[i].path, &data->tex[i].w, &data->tex[i].h);
+		data->tex[i].img = mlx_xpm_file_to_image(data->mlx, data->tex[i].path,
+				&data->tex[i].w, &data->tex[i].h);
 		if (!data->tex[i].img)
 			return (ft_putstr("Error: texture "), ft_putstr(data->tex[i].path),
 				ft_putchar('\n'), 0);
@@ -62,8 +62,8 @@ static int	load_textures(t_mlx *data)
 			"../sprites/hands.xpm", &data->hands_w, &data->hands_h);
 	if (!data->hands_texture)
 		return (ft_putstr("Error: hands texture\n"), 0);
-	data->hands_addr = mlx_get_data_addr(data->hands_texture,
-			&data->hands_bpp, &data->hands_line_len, &data->hands_endian);
+	data->hands_addr = mlx_get_data_addr(data->hands_texture, &data->hands_bpp,
+			&data->hands_line_len, &data->hands_endian);
 	return (1);
 }
 
@@ -107,10 +107,10 @@ int	main(int ac, char **av)
 	if (!init_mlx(&data))
 		return (free_data(&data), 1);
 	render_3d(&data);
-	mlx_hook(data.win, 2, 1L << 0, key_press, &data);
-	mlx_hook(data.win, 3, 1L << 1, key_release, &data);
-	mlx_hook(data.win, 17, 0, close_window, &data);
-	mlx_loop_hook(data.mlx, game_loop, &data);
+	mlx_hook(data.win, 2, 1L << 0, (int (*)(void))(void *)key_press, &data);
+	mlx_hook(data.win, 3, 1L << 1, (int (*)(void))(void *)key_release, &data);
+	mlx_hook(data.win, 17, 0, (int (*)(void))(void *)close_window, &data);
+	mlx_loop_hook(data.mlx, (int (*)(void))(void *)game_loop, &data);
 	mlx_loop(data.mlx);
 	return (0);
 }

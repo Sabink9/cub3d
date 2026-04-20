@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/06 14:56:16 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/06 15:13:16 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/20 16:20:00 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -37,7 +37,7 @@ static char	*trim_path(char *str)
 	return (path);
 }
 
-int	parse_header_line(t_mlx *data, char *line, int *flags)
+static int	parse_tex_line(t_mlx *data, char *line, int *flags)
 {
 	if (ft_strncmp(line, "NO ", 3) == 0)
 		return (free(data->tex[NORTH].path),
@@ -51,16 +51,28 @@ int	parse_header_line(t_mlx *data, char *line, int *flags)
 	if (ft_strncmp(line, "WE ", 3) == 0)
 		return (free(data->tex[WEST].path),
 			data->tex[WEST].path = trim_path(line + 3), *flags |= 8, 1);
+	return (-1);
+}
+
+int	parse_header_line(t_mlx *data, char *line, int *flags)
+{
+	int	res;
+
+	res = parse_tex_line(data, line, flags);
+	if (res != -1)
+		return (res);
 	if (line[0] == 'F' && (line[1] == ' ' || line[1] == '\t'))
 	{
 		if (!parse_color(line + 2, &data->floor_color))
-			return (ft_putstr("Error: invalid color value (must be 0-255)\n"), -1);
+			return (ft_putstr("Error: invalid color value (must be 0-255)\n"),
+				-1);
 		return (*flags |= 16, 1);
 	}
 	if (line[0] == 'C' && (line[1] == ' ' || line[1] == '\t'))
 	{
 		if (!parse_color(line + 2, &data->ceil_color))
-			return (ft_putstr("Error: invalid color value (must be 0-255)\n"), -1);
+			return (ft_putstr("Error: invalid color value (must be 0-255)\n"),
+				-1);
 		return (*flags |= 32, 1);
 	}
 	return (0);
@@ -99,28 +111,4 @@ int	has_all_headers(char *line, int *flags)
 	else if (line[0] == 'C' && (line[1] == ' ' || line[1] == '\t'))
 		*flags |= 32;
 	return (*flags == 63);
-}
-
-int	count_map_lines(int fd, int *flags)
-{
-	char	*line;
-	int		count;
-	int		in_map;
-
-	count = 0;
-	in_map = 0;
-	line = get_next_line(fd);
-	while (line)
-	{
-		strip_newline(line);
-		if (!in_map)
-			has_all_headers(line, flags);
-		if (*flags == 63 && is_map_line(line))
-			in_map = 1;
-		if (in_map && line[0] != '\0')
-			count++;
-		free(line);
-		line = get_next_line(fd);
-	}
-	return (count);
 }
