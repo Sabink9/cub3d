@@ -1,7 +1,6 @@
 CC = cc
 CFLAGS = -Wall -Werror -Wextra -I.././get_next_line
 LDFLAGS = -L .././minilibx-linux -lmlx -lX11 -lXext -lm
-ASAN_FLAGS = -fsanitize=address,leak -g
 RM = rm -rf
 
 SRC =	render_game/draw_hands.c \
@@ -39,9 +38,6 @@ clean:
 fclean: clean
 	$(RM) $(NAME)
 
-asan: fclean
-	$(MAKE) all CFLAGS="$(CFLAGS) $(ASAN_FLAGS)" LDFLAGS="$(LDFLAGS) $(ASAN_FLAGS)"
-
 re: fclean all
 
-.PHONY: all clean fclean re asan
+.PHONY: all clean fclean re 
