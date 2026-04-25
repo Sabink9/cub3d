@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/06 14:56:16 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/20 16:20:00 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/25 00:00:00 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -37,63 +37,62 @@ static char	*trim_path(char *str)
 	return (path);
 }
 
-static int	parse_tex_line(t_mlx *data, char *line, int *flags)
+static int	match_dir(char *line, int *idx, int *bit)
 {
 	if (ft_strncmp(line, "NO ", 3) == 0)
-		return (free(data->tex[NORTH].path),
-			data->tex[NORTH].path = trim_path(line + 3), *flags |= 1, 1);
+		return (*idx = NORTH, *bit = 1, 1);
 	if (ft_strncmp(line, "SO ", 3) == 0)
-		return (free(data->tex[SOUTH].path),
-			data->tex[SOUTH].path = trim_path(line + 3), *flags |= 2, 1);
+		return (*idx = SOUTH, *bit = 2, 1);
 	if (ft_strncmp(line, "EA ", 3) == 0)
-		return (free(data->tex[EAST].path),
-			data->tex[EAST].path = trim_path(line + 3), *flags |= 4, 1);
+		return (*idx = EAST, *bit = 4, 1);
 	if (ft_strncmp(line, "WE ", 3) == 0)
-		return (free(data->tex[WEST].path),
-			data->tex[WEST].path = trim_path(line + 3), *flags |= 8, 1);
-	return (-1);
+		return (*idx = WEST, *bit = 8, 1);
+	return (0);
+}
+
+static int	parse_tex_line(t_mlx *data, char *line, int *flags)
+{
+	int	idx;
+	int	bit;
+
+	idx = 0;
+	bit = 0;
+	if (!match_dir(line, &idx, &bit))
+		return (-1);
+	if (*flags & bit)
+		return (ft_putstr("Error: duplicate texture identifier\n"), -1);
+	free(data->tex[idx].path);
+	data->tex[idx].path = trim_path(line + 3);
+	*flags |= bit;
+	return (1);
 }
 
 int	parse_header_line(t_mlx *data, char *line, int *flags)
 {
 	int	res;
 
+	if (line[0] == '#')
+		return (ft_putstr("Error: comment not allowed in .cub file\n"), -1);
 	res = parse_tex_line(data, line, flags);
 	if (res != -1)
 		return (res);
 	if (line[0] == 'F' && (line[1] == ' ' || line[1] == '\t'))
 	{
-		if (!parse_color(line + 2, &data->floor_color))
-			return (ft_putstr("Error: invalid color value (must be 0-255)\n"),
-				-1);
+		res = parse_color(line + 2, &data->floor_color);
+		if (res != 1)
+			return (ft_putstr(res ? "Error: too many RGB values\n"
+					: "Error: invalid floor color\n"), -1);
 		return (*flags |= 16, 1);
 	}
 	if (line[0] == 'C' && (line[1] == ' ' || line[1] == '\t'))
 	{
-		if (!parse_color(line + 2, &data->ceil_color))
-			return (ft_putstr("Error: invalid color value (must be 0-255)\n"),
-				-1);
+		res = parse_color(line + 2, &data->ceil_color);
+		if (res != 1)
+			return (ft_putstr(res ? "Error: too many RGB values\n"
+					: "Error: invalid ceiling color\n"), -1);
 		return (*flags |= 32, 1);
 	}
 	return (0);
-}
-
-int	is_map_line(char *line)
-{
-	int	i;
-
-	i = 0;
-	if (!line[i] || line[i] == '\n')
-		return (0);
-	while (line[i] && line[i] != '\n')
-	{
-		if (line[i] != '0' && line[i] != '1' && line[i] != ' ' && line[i] != 'N'
-			&& line[i] != 'S' && line[i] != 'E' && line[i] != 'W'
-			&& line[i] != '\t')
-			return (0);
-		i++;
-	}
-	return (1);
 }
 
 int	has_all_headers(char *line, int *flags)

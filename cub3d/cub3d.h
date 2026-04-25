@@ -170,7 +170,7 @@ int					is_map_line(char *line);
 int					has_all_headers(char *line, int *flags);
 int					count_map_lines(int fd, int *flags);
 // Grid
-void				fill_grid(t_map *map, int fd);
+int					fill_grid(t_map *map, int fd);
 // Map
 int					validate_map(t_mlx *data, char *path);
 int					parse_map(t_mlx *data, char **av);

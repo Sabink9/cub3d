@@ -104,7 +104,8 @@ int	parse_map(t_mlx *data, char **av)
 		return (free_data(data),
 			ft_putstr("Error: missing identifiers in .cub file\n"), 0);
 	fd = open(av[1], O_RDONLY);
-	fill_grid(&data->map, fd);
+	if (fill_grid(&data->map, fd) == -1)
+		return (close(fd), free_data(data), 0);
 	close(fd);
 	if (!validate_map(data, av[1]))
 		return (free_data(data), 0);

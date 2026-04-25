@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/13 00:00:00 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/13 00:00:00 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/25 00:00:00 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -17,11 +17,23 @@ static int	ft_atoi_color(char *str)
 	int	n;
 
 	n = 0;
-	while (*str == ' ' || *str == '\t')
-		str++;
 	while (*str >= '0' && *str <= '9')
 		n = n * 10 + (*str++ - '0');
 	return (n);
+}
+
+static int	parse_component(char **str, int *val)
+{
+	while (**str == ' ' || **str == '\t')
+		(*str)++;
+	if (!(**str >= '0' && **str <= '9'))
+		return (0);
+	*val = ft_atoi_color(*str);
+	while (**str >= '0' && **str <= '9')
+		(*str)++;
+	while (**str == ' ' || **str == '\t')
+		(*str)++;
+	return (1);
 }
 
 int	parse_color(char *str, unsigned int *color)
@@ -30,20 +42,19 @@ int	parse_color(char *str, unsigned int *color)
 	int	g;
 	int	b;
 
-	while (*str == ' ' || *str == '\t')
-		str++;
-	r = ft_atoi_color(str);
-	while (*str && *str != ',')
-		str++;
-	if (!*str)
+	if (!parse_component(&str, &r) || *str != ',')
 		return (0);
-	g = ft_atoi_color(++str);
-	while (*str && *str != ',')
-		str++;
-	if (!*str)
+	str++;
+	if (!parse_component(&str, &g) || *str != ',')
 		return (0);
-	b = ft_atoi_color(++str);
-	if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255)
+	str++;
+	if (!parse_component(&str, &b))
+		return (0);
+	if (*str == ',')
+		return (-1);
+	if (*str != '\0' && *str != '\n')
+		return (0);
+	if (r > 255 || g > 255 || b > 255)
 		return (0);
 	*color = ((unsigned int)r << 16) | ((unsigned int)g << 8) | (unsigned int)b;
 	return (1);
