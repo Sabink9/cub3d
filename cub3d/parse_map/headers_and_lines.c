@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/06 14:56:16 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/25 00:00:00 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/26 12:17:02 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -72,26 +72,17 @@ int	parse_header_line(t_mlx *data, char *line, int *flags)
 	int	res;
 
 	if (line[0] == '#')
-		return (ft_putstr("Error: comment not allowed in .cub file\n"), -1);
+	{
+		ft_putstr("Error: comment not allowed in .cub file\n");
+		return (-1);
+	}
 	res = parse_tex_line(data, line, flags);
 	if (res != -1)
 		return (res);
 	if (line[0] == 'F' && (line[1] == ' ' || line[1] == '\t'))
-	{
-		res = parse_color(line + 2, &data->floor_color);
-		if (res != 1)
-			return (ft_putstr(res ? "Error: too many RGB values\n"
-					: "Error: invalid floor color\n"), -1);
-		return (*flags |= 16, 1);
-	}
+		return (parse_floor(data, line, flags));
 	if (line[0] == 'C' && (line[1] == ' ' || line[1] == '\t'))
-	{
-		res = parse_color(line + 2, &data->ceil_color);
-		if (res != 1)
-			return (ft_putstr(res ? "Error: too many RGB values\n"
-					: "Error: invalid ceiling color\n"), -1);
-		return (*flags |= 32, 1);
-	}
+		return (parse_ceil(data, line, flags));
 	return (0);
 }
 

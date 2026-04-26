@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/13 00:00:00 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/25 00:00:00 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/26 12:17:23 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -57,5 +57,39 @@ int	parse_color(char *str, unsigned int *color)
 	if (r > 255 || g > 255 || b > 255)
 		return (0);
 	*color = ((unsigned int)r << 16) | ((unsigned int)g << 8) | (unsigned int)b;
+	return (1);
+}
+
+int	parse_floor(t_mlx *data, char *line, int *flags)
+{
+	int	res;
+
+	res = parse_color(line + 2, &data->floor_color);
+	if (res != 1)
+	{
+		if (res)
+			ft_putstr("Error: too many RGB values\n");
+		else
+			ft_putstr("Error: invalid floor color\n");
+		return (-1);
+	}
+	*flags |= 16;
+	return (1);
+}
+
+int	parse_ceil(t_mlx *data, char *line, int *flags)
+{
+	int	res;
+
+	res = parse_color(line + 2, &data->ceil_color);
+	if (res != 1)
+	{
+		if (res)
+			ft_putstr("Error: too many RGB values\n");
+		else
+			ft_putstr("Error: invalid ceiling color\n");
+		return (-1);
+	}
+	*flags |= 32;
 	return (1);
 }

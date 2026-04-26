@@ -6,7 +6,7 @@
 /*   By: saciurus <saciurus@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/06 15:59:33 by saciurus          #+#    #+#             */
-/*   Updated: 2026/04/20 15:34:43 by saciurus         ###   ########.fr       */
+/*   Updated: 2026/04/26 12:16:46 by saciurus         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -164,6 +164,8 @@ int					ft_strncmp(const char *s1, const char *s2, int n);
 int					parse_color(char *str, unsigned int *color);
 void				init_data_null(t_mlx *data);
 void				find_player(t_map *map, t_player *player);
+int					parse_floor(t_mlx *data, char *line, int *flags);
+int					parse_ceil(t_mlx *data, char *line, int *flags);
 // Headers
 int					parse_header_line(t_mlx *data, char *line, int *flags);
 int					is_map_line(char *line);
